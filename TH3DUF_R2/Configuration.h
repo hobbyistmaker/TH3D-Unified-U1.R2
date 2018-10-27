@@ -444,6 +444,10 @@
 //#define TITAN_EXTRUDER
 #define TITAN_EXTRUDER_STEPS 463
 
+// If you are using a Bondtech Extruder uncomment the bellow line to setup the firmware to the correct steps and direction
+//#define BONDTECH_EXTRUDER
+#define BONDTECH_EXTRUDER_STEPS 415
+
 // DUAL HOTEND SETTINGS ----------------------------
 
 // This is the distance between each nozzle tip when using a dual hotend like the TH3D Tough Dual Hotend or the E3D Chimera or Dual hotends.

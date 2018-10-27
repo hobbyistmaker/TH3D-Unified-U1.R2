@@ -162,7 +162,11 @@
     #if ENABLED(CUSTOM_ESTEPS)
       #define DEFAULT_AXIS_STEPS_PER_UNIT   { 160, 160, 400, CUSTOM_ESTEPS_VALUE }
     #else
-      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 160, 160, 800, 200 }
+      #if ENABLED(BONDTECH_EXTRUDER)
+        #define DEFAULT_AXIS_STEPS_PER_UNIT { 160, 160, 800, BONDTECH_EXTRUDER_STEPS }
+      #else
+        #define DEFAULT_AXIS_STEPS_PER_UNIT   { 160, 160, 800, 200 }
+      #endif
     #endif
   #endif
   
@@ -182,7 +186,7 @@
   #define INVERT_Y_DIR false
   #define INVERT_Z_DIR true
   
-  #if ENABLED(TITAN_EXTRUDER)
+  #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
     #define INVERT_E0_DIR false
   #else
     #define INVERT_E0_DIR true
@@ -231,7 +235,11 @@
     #if ENABLED(CUSTOM_ESTEPS)
       #define DEFAULT_AXIS_STEPS_PER_UNIT   { 100, 100, 400, CUSTOM_ESTEPS_VALUE }
     #else
-      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 100, 100, 400, 100 }
+      #if ENABLED(BONDTECH_EXTRUDER)
+        #define DEFAULT_AXIS_STEPS_PER_UNIT { 100, 100, 400, BONDTECH_EXTRUDER_STEPS }
+      #else
+        #define DEFAULT_AXIS_STEPS_PER_UNIT   { 100, 100, 400, 100 }
+      #endif
     #endif
   #endif
   
@@ -251,7 +259,7 @@
   #define INVERT_Y_DIR false
   #define INVERT_Z_DIR true
   
-  #if ENABLED(TITAN_EXTRUDER)
+  #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
     #define INVERT_E0_DIR true
   #else
     #define INVERT_E0_DIR false
@@ -301,7 +309,11 @@
     #if ENABLED(CUSTOM_ESTEPS)
       #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, CUSTOM_ESTEPS_VALUE }
     #else
-      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 93 }
+      #if ENABLED(BONDTECH_EXTRUDER)
+        #define DEFAULT_AXIS_STEPS_PER_UNIT { 80, 80, 400, BONDTECH_EXTRUDER_STEPS }
+      #else
+        #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 93 }
+      #endif
     #endif
   #endif
   
@@ -375,7 +387,11 @@
     #if ENABLED(CUSTOM_ESTEPS)
       #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, CUSTOM_ESTEPS_VALUE }
     #else
-      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 105 }
+      #if ENABLED(BONDTECH_EXTRUDER)
+        #define DEFAULT_AXIS_STEPS_PER_UNIT { 80, 80, 400, BONDTECH_EXTRUDER_STEPS }
+      #else
+        #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 105 }
+      #endif
     #endif
   #endif
   
@@ -395,7 +411,7 @@
   #define INVERT_Y_DIR false
   #define INVERT_Z_DIR true
   
-  #if ENABLED(TITAN_EXTRUDER)
+  #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
     #define INVERT_E0_DIR true
   #else
     #define INVERT_E0_DIR false
@@ -520,7 +536,11 @@
     #if ENABLED(CUSTOM_ESTEPS)
       #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, CUSTOM_ESTEPS_VALUE }
     #else
-      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 95 }
+      #if ENABLED(BONDTECH_EXTRUDER)
+        #define DEFAULT_AXIS_STEPS_PER_UNIT { 80, 80, 400, BONDTECH_EXTRUDER_STEPS }
+      #else
+        #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 95 }
+      #endif
     #endif
   #endif
   #define DEFAULT_MAX_FEEDRATE          { 400, 400, 15, 50 }
@@ -551,7 +571,7 @@
   #define INVERT_Y_DIR true
   #define INVERT_Z_DIR true
   
-  #if ENABLED(TITAN_EXTRUDER)
+  #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
     #define INVERT_E0_DIR false
   #else
     #define INVERT_E0_DIR true
@@ -588,7 +608,11 @@
     #if ENABLED(CUSTOM_ESTEPS)
       #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, CUSTOM_ESTEPS_VALUE }
     #else
-      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 94 }
+      #if ENABLED(BONDTECH_EXTRUDER)
+        #define DEFAULT_AXIS_STEPS_PER_UNIT { 80, 80, 400, BONDTECH_EXTRUDER_STEPS }
+      #else
+        #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 94 }
+      #endif
     #endif
   #endif
   #define DEFAULT_MAX_FEEDRATE          { 400, 400, 15, 50 }
@@ -619,7 +643,7 @@
   #define INVERT_Y_DIR false
   #define INVERT_Z_DIR false
   
-  #if ENABLED(TITAN_EXTRUDER)
+  #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
     #define INVERT_E0_DIR false
   #else
     #define INVERT_E0_DIR true
@@ -662,7 +686,11 @@
     #if ENABLED(CUSTOM_ESTEPS)
       #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, CUSTOM_ESTEPS_VALUE }
     #else
-      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 100 }
+      #if ENABLED(BONDTECH_EXTRUDER)
+        #define DEFAULT_AXIS_STEPS_PER_UNIT { 80, 80, 400, BONDTECH_EXTRUDER_STEPS }
+      #else
+        #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 100 }
+      #endif
     #endif
   #endif
   
@@ -695,7 +723,7 @@
   #define INVERT_Y_DIR false
   #define INVERT_Z_DIR true
 
-  #if ENABLED(TITAN_EXTRUDER)
+  #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
     #define INVERT_E0_DIR false
   #else
     #define INVERT_E0_DIR true
@@ -745,8 +773,12 @@
     #if ENABLED(CUSTOM_ESTEPS)
 	  #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, CUSTOM_ESTEPS_VALUE }
 	#else
-      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 93 }
-	#endif
+      #if ENABLED(BONDTECH_EXTRUDER)
+        #define DEFAULT_AXIS_STEPS_PER_UNIT { 80, 80, 400, BONDTECH_EXTRUDER_STEPS }
+      #else
+        #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 93 }
+      #endif
+	  #endif
   #endif
   
   #define DEFAULT_MAX_FEEDRATE          { 500, 500, 15, 50 }
@@ -765,7 +797,7 @@
   #define INVERT_Y_DIR true
   #define INVERT_Z_DIR false
   
-  #if ENABLED(TITAN_EXTRUDER)
+  #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
     #define INVERT_E0_DIR false
   #else
     #define INVERT_E0_DIR true
@@ -848,7 +880,11 @@
     #if ENABLED(CUSTOM_ESTEPS)
 	  #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, CUSTOM_ESTEPS_VALUE }
 	#else
-      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 93 }
+      #if ENABLED(BONDTECH_EXTRUDER)
+        #define DEFAULT_AXIS_STEPS_PER_UNIT { 80, 80, 400, BONDTECH_EXTRUDER_STEPS }
+      #else
+        #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 93 }
+      #endif
 	#endif
   #endif
   
@@ -867,7 +903,7 @@
   #define INVERT_X_DIR false
   #define INVERT_Y_DIR false
   #define INVERT_Z_DIR true
-  #if ENABLED(TITAN_EXTRUDER)
+  #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
     #define INVERT_E0_DIR true
   #else
     #define INVERT_E0_DIR false
@@ -918,7 +954,7 @@
     #define CR10SDUALEBOARD
     #define SINGLENOZZLE
     
-    #if ENABLED(TITAN_EXTRUDER)
+    #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
       #define INVERT_E1_DIR true
     #else
       #define INVERT_E1_DIR false
@@ -930,7 +966,7 @@
   #if ENABLED(DUAL_HOTEND_DUAL_NOZZLES)
     #define CR10SDUALEBOARD
     
-    #if ENABLED(TITAN_EXTRUDER)
+    #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
       #define INVERT_E1_DIR true
     #else
       #define INVERT_E1_DIR false
@@ -946,7 +982,7 @@
     #define CR10SDUALEBOARD
     #define SINGLENOZZLE
         
-    #if ENABLED(TITAN_EXTRUDER)
+    #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
       #define INVERT_E1_DIR true
     #else
       #define INVERT_E1_DIR false
@@ -992,7 +1028,11 @@
     #if ENABLED(CUSTOM_ESTEPS)
 	    #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, CUSTOM_ESTEPS_VALUE }
 	  #else
-      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 93 }
+      #if ENABLED(BONDTECH_EXTRUDER)
+        #define DEFAULT_AXIS_STEPS_PER_UNIT { 80, 80, 400, BONDTECH_EXTRUDER_STEPS }
+      #else
+        #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 93 }
+      #endif
 	  #endif
   #endif
   #define DEFAULT_MAX_FEEDRATE          { 500, 500, 15, 50 }
@@ -1011,7 +1051,7 @@
   #define INVERT_Y_DIR true
   #define INVERT_Z_DIR false
   
-  #if ENABLED(TITAN_EXTRUDER)
+  #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
     #define INVERT_E0_DIR false
   #else
     #define INVERT_E0_DIR true
@@ -1057,7 +1097,11 @@
 	  #if ENABLED(CUSTOM_ESTEPS)
 	    #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, CUSTOM_ESTEPS_VALUE }
 	  #else
-      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 400 }
+      #if ENABLED(BONDTECH_EXTRUDER)
+        #define DEFAULT_AXIS_STEPS_PER_UNIT { 80, 80, 400, BONDTECH_EXTRUDER_STEPS }
+      #else
+        #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 400 }
+      #endif
 	  #endif
   #endif
   #define DEFAULT_MAX_FEEDRATE          { 500, 500, 15, 50 }
@@ -1183,7 +1227,11 @@
 	    #if ENABLED(CUSTOM_ESTEPS)
 		    #define DEFAULT_AXIS_STEPS_PER_UNIT   { 100, 100, 400, CUSTOM_ESTEPS_VALUE }
 	    #else
+      #if ENABLED(BONDTECH_EXTRUDER)
+        #define DEFAULT_AXIS_STEPS_PER_UNIT { 100, 100, 400, BONDTECH_EXTRUDER_STEPS }
+      #else
         #define DEFAULT_AXIS_STEPS_PER_UNIT   { 100, 100, 400, 93 }
+      #endif
       #endif
 	  #endif
 	#else
@@ -1193,7 +1241,11 @@
 	    #if ENABLED(CUSTOM_ESTEPS)
 		    #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, CUSTOM_ESTEPS_VALUE }
 	    #else
+      #if ENABLED(BONDTECH_EXTRUDER)
+        #define DEFAULT_AXIS_STEPS_PER_UNIT { 80, 80, 400, BONDTECH_EXTRUDER_STEPS }
+      #else
         #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 93 }
+      #endif
 	    #endif
 	  #endif
   #endif
@@ -1244,7 +1296,7 @@
     #define INVERT_X_DIR false
     #define INVERT_Y_DIR true
     #define INVERT_Z_DIR false
-    #if ENABLED(TITAN_EXTRUDER)
+    #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
       #define INVERT_E0_DIR true
 	#else
       #define INVERT_E0_DIR false
@@ -1273,7 +1325,7 @@
     #define INVERT_X_DIR false
     #define INVERT_Y_DIR true
     #define INVERT_Z_DIR false
-    #if ENABLED(TITAN_EXTRUDER)
+    #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
       #define INVERT_E0_DIR true
 	#else
       #define INVERT_E0_DIR false
@@ -1303,7 +1355,7 @@
     #define INVERT_X_DIR false
     #define INVERT_Y_DIR false
     #define INVERT_Z_DIR true
-    #if ENABLED(TITAN_EXTRUDER)
+    #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
       #define INVERT_E0_DIR true
 	#else
       #define INVERT_E0_DIR false
@@ -1334,7 +1386,7 @@
   #define INVERT_Y_DIR false
   #define INVERT_Z_DIR true
   
-  #if ENABLED(TITAN_EXTRUDER)
+  #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
     #define INVERT_E0_DIR true
   #else
     #define INVERT_E0_DIR false
@@ -1364,7 +1416,7 @@
     #define INVERT_Y_DIR true
     #define INVERT_Z_DIR true
 	
-    #if ENABLED(TITAN_EXTRUDER)
+    #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
       #define INVERT_E0_DIR false
 	#else
       #define INVERT_E0_DIR true
@@ -1393,7 +1445,7 @@
     #define INVERT_Y_DIR true
     #define INVERT_Z_DIR true
 	
-    #if ENABLED(TITAN_EXTRUDER)
+    #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
       #define INVERT_E0_DIR false
     #else
       #define INVERT_E0_DIR true
