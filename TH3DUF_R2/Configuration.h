@@ -218,7 +218,7 @@
 //#define CR10_OEM
 //#define TM3DAERO
 //#define TM3DAERO_EXTENDED
-//#define PETSFANG  //This is the RIGHT mounted version - if using the left mount please use the CUSTOM_PROBE option.
+#define PETSFANG  //This is the RIGHT mounted version - if using the left mount please use the CUSTOM_PROBE option.
 //#define CUSTOM_PROBE
 
 //=================================================================================================
@@ -232,7 +232,7 @@
 // 
 // EZABL and EZOut support are still supported just use the lines above this comment section.
 //=================================================================================================
-//#define ENDER3_DUALBOARD
+#define ENDER3_DUALBOARD
 
 // If you are using a single hotend with the 2 into 1 adapter uncomment the below line
 //#define SINGLE_HOTEND_YADAPTER
@@ -391,7 +391,7 @@
 
 // If you want babystepping to modify the Z Offset uncomment the below line. Use M500 to save any changes made or
 // Control > Store Settings if you want to save the changes made with the Z Offset/Babystepping combined option.
-//#define BABYSTEP_OFFSET
+#define BABYSTEP_OFFSET
 
 // This will disable the XYE motors during probing. Can be useful if you have stepper motors causing interference issues with the EZABL sensor.
 //#define PROBING_MOTORS_OFF
@@ -445,7 +445,7 @@
 #define TITAN_EXTRUDER_STEPS 463
 
 // If you are using a Bondtech Extruder uncomment the bellow line to setup the firmware to the correct steps and direction
-//#define BONDTECH_EXTRUDER
+#define BONDTECH_EXTRUDER
 #define BONDTECH_EXTRUDER_STEPS 415
 
 // DUAL HOTEND SETTINGS ----------------------------
@@ -529,7 +529,7 @@
 // Linear Advance Pressure Control - This is provided for convenience and is unsupported with included product support.
 // See http://marlinfw.org/docs/features/lin_advance.html for full instructions.
 // Uncomment the below line to enable Linear Advance Pressure Control.
-//#define LINEAR_ADVANCE
+#define LINEAR_ADVANCE
 // Change the K Value here or use M900 KX.XX in your starting code (recommended).
 #define LINEAR_ADVANCE_K 0
 
