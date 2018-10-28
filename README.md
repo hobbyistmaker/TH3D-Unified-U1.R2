@@ -1,4 +1,4 @@
-**This firmware is maintained by TH3D. The goal is an easy to use firmware for 3D printers that we have added support for.**
+**This is a configuration for an Ender 3 equipped with the Dualboard CR10S control board, with a Bondtech Extruder running the Unified firmware maintained by TH3D. **
 
 ----------
 
