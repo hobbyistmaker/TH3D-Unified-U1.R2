@@ -1,4 +1,4 @@
-**This firmware is maintained by TH3D. The goal is an easy to use firmware for 3D printers that we have added support for.**
+**This is a configuration for an Ender 3 running the Unified firmware maintained by TH3D, equipped with the EZABL on a Petsfang mount.**
 
 ----------
 
