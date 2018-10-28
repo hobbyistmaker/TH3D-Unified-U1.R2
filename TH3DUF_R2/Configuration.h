@@ -205,7 +205,7 @@
 //===========================================================================
 // Creality Ender 3 Options - Select 'Sanguino 1284p' from Tools > Board
 //===========================================================================
-//#define ENDER3
+#define ENDER3
 
 // If you are using our EZOut V1/V2 (connected to LCD header) filament sensor kit please follow the install guide
 // and then uncomment the #define EZOUT_ENABLE line below.
@@ -218,7 +218,7 @@
 //#define CR10_OEM
 //#define TM3DAERO
 //#define TM3DAERO_EXTENDED
-//#define PETSFANG  //This is the RIGHT mounted version - if using the left mount please use the CUSTOM_PROBE option.
+#define PETSFANG  //This is the RIGHT mounted version - if using the left mount please use the CUSTOM_PROBE option.
 //#define CUSTOM_PROBE
 
 //=================================================================================================
@@ -391,7 +391,7 @@
 
 // If you want babystepping to modify the Z Offset uncomment the below line. Use M500 to save any changes made or
 // Control > Store Settings if you want to save the changes made with the Z Offset/Babystepping combined option.
-//#define BABYSTEP_OFFSET
+#define BABYSTEP_OFFSET
 
 // This will disable the XYE motors during probing. Can be useful if you have stepper motors causing interference issues with the EZABL sensor.
 //#define PROBING_MOTORS_OFF
