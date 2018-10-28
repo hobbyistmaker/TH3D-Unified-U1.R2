@@ -1,4 +1,4 @@
-**This is a configuration for an Ender 3 running the Unified firmware maintained by TH3D, equipped with the EZABL on a Petsfang mount.**
+**This is a configuration for an Ender 3 running the Unified firmware maintained by TH3D, equipped with the EZABL on a Petsfang mount. Babystepping is enabled.**
 
 ----------
 
