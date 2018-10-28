@@ -1,4 +1,4 @@
-**This is a configuration for an Ender 3 equipped with the Dualboard CR10S control board, with a Bondtech Extruder running the Unified firmware maintained by TH3D. **
+** This is a configuration for an Ender 3 running the Unified firmware maintained by TH3D, equipped with: the CR10S dualboard control board, a Bondtech extruder and the EZABL on a Petsfang mount. **
 
 ----------
 
