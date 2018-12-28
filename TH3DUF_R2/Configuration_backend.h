@@ -9,17 +9,19 @@
 #include "Configuration_th3d.h"
 
 #if DISABLED(TH3DINHOUSEMACHINE)
-  #define X_DRIVER_TYPE  A4988
-  #define Y_DRIVER_TYPE  A4988
-  #define Z_DRIVER_TYPE  A4988
-  #define X2_DRIVER_TYPE A4988
-  #define Y2_DRIVER_TYPE A4988
-  #define Z2_DRIVER_TYPE A4988
-  #define E0_DRIVER_TYPE A4988
-  #define E1_DRIVER_TYPE A4988
-  #define E2_DRIVER_TYPE A4988
-  #define E3_DRIVER_TYPE A4988
-  #define E4_DRIVER_TYPE A4988
+  #if DISABLED(CUSTOM_DRIVERS)
+    #define X_DRIVER_TYPE  A4988
+    #define Y_DRIVER_TYPE  A4988
+    #define Z_DRIVER_TYPE  A4988
+    #define X2_DRIVER_TYPE A4988
+    #define Y2_DRIVER_TYPE A4988
+    #define Z2_DRIVER_TYPE A4988
+    #define E0_DRIVER_TYPE A4988
+    #define E1_DRIVER_TYPE A4988
+    #define E2_DRIVER_TYPE A4988
+    #define E3_DRIVER_TYPE A4988
+    #define E4_DRIVER_TYPE A4988
+  #endif
 #endif
 
 //Sensor Mounts
@@ -29,9 +31,14 @@
     #define DISABLE_BOOT
   #endif
 #endif
-#if ENABLED(GEE_A10_OEM)
-  #define X_PROBE_OFFSET_FROM_EXTRUDER -53
-  #define Y_PROBE_OFFSET_FROM_EXTRUDER 3
+#if ENABLED(ADIM_I3P_OEM)
+  #define X_PROBE_OFFSET_FROM_EXTRUDER 33
+  #define Y_PROBE_OFFSET_FROM_EXTRUDER -60
+  #define EZABL_ENABLE
+#endif
+#if ENABLED(GEE_A10_V1_OEM)
+  #define X_PROBE_OFFSET_FROM_EXTRUDER -54
+  #define Y_PROBE_OFFSET_FROM_EXTRUDER 0
   #define EZABL_ENABLE
 #endif
 #if ENABLED(CR10_VOLCANO)
@@ -42,6 +49,11 @@
 #if ENABLED(CR10_V6HEAVYDUTY)
   #define X_PROBE_OFFSET_FROM_EXTRUDER 63
   #define Y_PROBE_OFFSET_FROM_EXTRUDER 0
+  #define EZABL_ENABLE
+#endif
+#if ENABLED(AR_OEM_MOUNT)
+  #define X_PROBE_OFFSET_FROM_EXTRUDER -32
+  #define Y_PROBE_OFFSET_FROM_EXTRUDER -8
   #define EZABL_ENABLE
 #endif
 #if ENABLED(CR10_OEM)
@@ -139,6 +151,211 @@
   #define DISABLE_BOOT
 #endif
 
+//Tronxy X5S Settings
+#if ENABLED(TRONXY_X5S)
+  #define SLIM_1284P
+  #define BAUDRATE 115200
+  
+  #ifndef MOTHERBOARD
+    #define MOTHERBOARD BOARD_MELZI_TRONXY
+  #endif
+    
+  #define X_MIN_ENDSTOP_INVERTING true
+  #define Y_MIN_ENDSTOP_INVERTING true
+  #define Z_MIN_ENDSTOP_INVERTING true
+  #define X_MAX_ENDSTOP_INVERTING true
+  #define Y_MAX_ENDSTOP_INVERTING true
+  #define Z_MAX_ENDSTOP_INVERTING true
+  #define Z_MIN_PROBE_ENDSTOP_INVERTING true
+
+  #if ENABLED(TITAN_EXTRUDER)
+    #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, TITAN_EXTRUDER_STEPS }
+  #else
+    #if ENABLED(CUSTOM_ESTEPS)
+      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, CUSTOM_ESTEPS_VALUE }
+    #else
+      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 95 }
+    #endif
+  #endif
+  
+  #define REPRAP_DISCOUNT_FULL_GRAPHIC_SMART_CONTROLLER
+  
+  #define DEFAULT_MAX_FEEDRATE          { 400, 400, 15, 50 }
+
+  #define DEFAULT_MAX_ACCELERATION      { 1000, 1000, 50, 5000 }
+  
+  #define DEFAULT_ACCELERATION          1000    
+  #define DEFAULT_RETRACT_ACCELERATION  1000   
+  #define DEFAULT_TRAVEL_ACCELERATION   1000
+  
+  #define COREXY
+
+  #define X_BED_SIZE 330
+  #define Y_BED_SIZE 330
+  #define Z_MAX_POS 420
+
+  #if ENABLED(HOME_ADJUST)
+    #define X_MIN_POS X_HOME_LOCATION
+    #define Y_MIN_POS Y_HOME_LOCATION
+  #else
+    #define X_MIN_POS -6
+    #define Y_MIN_POS 0
+  #endif
+
+  #define DEFAULT_XJERK                 10.0
+  #define DEFAULT_YJERK                 10.0
+  #define DEFAULT_ZJERK                  0.4
+  #define DEFAULT_EJERK                  5.0
+
+  #define INVERT_X_DIR true
+  #define INVERT_Y_DIR true
+  #define INVERT_Z_DIR false
+
+  #if ENABLED(TITAN_EXTRUDER)
+    #define INVERT_E0_DIR true
+  #else
+    #define INVERT_E0_DIR false
+  #endif
+  
+  #define PRINTER_ENABLED_CHECK
+#endif //end x5s settings
+
+//Tronxy X3S Settings
+#if ENABLED(TRONXY_X3S)
+  #define SLIM_1284P
+  #define BAUDRATE 115200
+  
+  #ifndef MOTHERBOARD
+    #define MOTHERBOARD BOARD_MELZI_TRONXY
+  #endif
+    
+  #define X_MIN_ENDSTOP_INVERTING true
+  #define Y_MIN_ENDSTOP_INVERTING true
+  #define Z_MIN_ENDSTOP_INVERTING true
+  #define X_MAX_ENDSTOP_INVERTING true
+  #define Y_MAX_ENDSTOP_INVERTING true
+  #define Z_MAX_ENDSTOP_INVERTING true
+  #define Z_MIN_PROBE_ENDSTOP_INVERTING true
+
+  #if ENABLED(TITAN_EXTRUDER)
+    #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, TITAN_EXTRUDER_STEPS }
+  #else
+    #if ENABLED(CUSTOM_ESTEPS)
+      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, CUSTOM_ESTEPS_VALUE }
+    #else
+      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 95 }
+    #endif
+  #endif
+  
+  #define REPRAP_DISCOUNT_FULL_GRAPHIC_SMART_CONTROLLER
+  
+  #define DEFAULT_MAX_FEEDRATE          { 300, 300, 15, 50 }
+
+  #define DEFAULT_MAX_ACCELERATION      { 500, 500, 50, 5000 }
+  
+  #define DEFAULT_ACCELERATION          500    
+  #define DEFAULT_RETRACT_ACCELERATION  3000   
+  #define DEFAULT_TRAVEL_ACCELERATION   500    
+
+  #define X_BED_SIZE 330
+  #define Y_BED_SIZE 330
+  #define Z_MAX_POS 420
+
+  #if ENABLED(HOME_ADJUST)
+    #define X_MIN_POS X_HOME_LOCATION
+    #define Y_MIN_POS Y_HOME_LOCATION
+  #else
+    #define X_MIN_POS 0
+    #define Y_MIN_POS 0
+  #endif
+
+  #define DEFAULT_XJERK                 10.0
+  #define DEFAULT_YJERK                 10.0
+  #define DEFAULT_ZJERK                  0.4
+  #define DEFAULT_EJERK                  5.0
+
+  #define INVERT_X_DIR false
+  #define INVERT_Y_DIR false
+  #define INVERT_Z_DIR true
+
+  #if ENABLED(TITAN_EXTRUDER)
+    #define INVERT_E0_DIR true
+  #else
+    #define INVERT_E0_DIR false
+  #endif
+  
+  #define PRINTER_ENABLED_CHECK
+#endif //end x3s settings
+
+//ADIMLAB GANTRY I3 PLUS Settings
+#if ENABLED(ADIM_GANTRY_I3_PLUS)
+  #ifndef MOTHERBOARD
+    #define MOTHERBOARD BOARD_HJC2560C_REV2
+  #endif
+
+  #define HJC_LCD_SMART_CONTROLLER
+  #define BAUDRATE 250000
+
+  #define X_MIN_ENDSTOP_INVERTING true
+  #define Y_MIN_ENDSTOP_INVERTING true
+  #define Z_MIN_ENDSTOP_INVERTING true
+  #define X_MAX_ENDSTOP_INVERTING true
+  #define Y_MAX_ENDSTOP_INVERTING true
+  #define Z_MAX_ENDSTOP_INVERTING true
+  #define Z_MIN_PROBE_ENDSTOP_INVERTING true
+  
+  #if ENABLED(TITAN_EXTRUDER)
+    #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, TITAN_EXTRUDER_STEPS }
+  #else
+    #if ENABLED(CUSTOM_ESTEPS)
+      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, CUSTOM_ESTEPS_VALUE }
+    #else
+      #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 100 }
+    #endif
+  #endif
+  
+  #define DEFAULT_MAX_FEEDRATE          { 300, 300, 15, 50 }
+  #define DEFAULT_MAX_ACCELERATION      { 2000, 2000, 50, 2000 }
+
+  #define DEFAULT_ACCELERATION          1000    
+  #define DEFAULT_RETRACT_ACCELERATION  1000   
+  #define DEFAULT_TRAVEL_ACCELERATION   1000    
+  
+  #define DEFAULT_XJERK                 10.0
+  #define DEFAULT_YJERK                 10.0
+  #define DEFAULT_ZJERK                  0.4
+  #define DEFAULT_EJERK                  5.0
+  
+  #define INVERT_X_DIR true
+  #define INVERT_Y_DIR true
+  #define INVERT_Z_DIR false
+  
+  #if ENABLED(TITAN_EXTRUDER)
+    #define INVERT_E0_DIR true
+  #else
+    #define INVERT_E0_DIR false
+  #endif
+
+  #define X_BED_SIZE 310
+  #define Y_BED_SIZE 310
+  #define Z_MAX_POS 410
+  
+  #if ENABLED(HOME_ADJUST)
+    #define X_MIN_POS X_HOME_LOCATION
+    #define Y_MIN_POS Y_HOME_LOCATION
+  #else
+    #define X_MIN_POS 0
+    #define Y_MIN_POS 0
+  #endif
+
+
+  #define ENCODER_PULSES_PER_STEP 4
+  #define ENCODER_STEPS_PER_MENU_ITEM 1
+  #define REVERSE_ENCODER_DIRECTION
+  
+  #define PRINTER_ENABLED_CHECK
+#endif //end adimlab i3 plus settings
+
 //DY-H9 Settings
 #if ENABLED(DY_H9)
   #ifndef MOTHERBOARD
@@ -169,6 +386,15 @@
       #endif
     #endif
   #endif
+  
+  #undef X_DRIVER_TYPE
+  #undef Y_DRIVER_TYPE
+  #undef Z_DRIVER_TYPE
+  #undef E0_DRIVER_TYPE
+  #define X_DRIVER_TYPE  DVR8825
+  #define Y_DRIVER_TYPE  DVR8825
+  #define Z_DRIVER_TYPE  DVR8825
+  #define E0_DRIVER_TYPE DVR8825
   
   #define DEFAULT_MAX_FEEDRATE          { 300, 300, 15, 50 }
   #define DEFAULT_MAX_ACCELERATION      { 2000, 2000, 200, 10000 }
@@ -216,6 +442,20 @@
     #define MOTHERBOARD BOARD_MKS_GEN_L
   #endif
 
+  #undef X_DRIVER_TYPE
+  #define X_DRIVER_TYPE  TMC2208_STANDALONE
+  #undef Y_DRIVER_TYPE
+  #define Y_DRIVER_TYPE  TMC2208_STANDALONE
+  #define Z_DRIVER_TYPE  A4988
+  #define E0_DRIVER_TYPE A4988
+  #define E1_DRIVER_TYPE A4988
+
+  #define NEW_JERK_CONTROL
+  #define NEW_ACCELERATION_CONTROL
+  #define LINEAR_ADVANCE
+  #define EZABL_FASTPROBE
+  #define BABYSTEP_OFFSET
+
   #define EZOUTV2_ENABLE
 
   #define REPRAP_DISCOUNT_FULL_GRAPHIC_SMART_CONTROLLER
@@ -238,7 +478,7 @@
       #if ENABLED(BONDTECH_EXTRUDER)
         #define DEFAULT_AXIS_STEPS_PER_UNIT { 100, 100, 400, BONDTECH_EXTRUDER_STEPS }
       #else
-        #define DEFAULT_AXIS_STEPS_PER_UNIT   { 100, 100, 400, 100 }
+        #define DEFAULT_AXIS_STEPS_PER_UNIT   { 100, 100, 400, 463 }
       #endif
     #endif
   #endif
@@ -262,7 +502,7 @@
   #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
     #define INVERT_E0_DIR true
   #else
-    #define INVERT_E0_DIR false
+    #define INVERT_E0_DIR true
   #endif
 
   #define X_BED_SIZE 300
@@ -286,7 +526,7 @@
 #endif
 
 //Geeetech A10 Settings
-#if ENABLED(GEEETECH_A10)
+#if ENABLED(GEEETECH_A10_V1)
   #ifndef MOTHERBOARD
     #define MOTHERBOARD BOARD_GT2560_REV_B
   #endif
@@ -339,16 +579,16 @@
     #define INVERT_E0_DIR true
   #endif
 
-  #define X_BED_SIZE 220
-  #define Y_BED_SIZE 220
+  #define X_BED_SIZE 235
+  #define Y_BED_SIZE 235
   #define Z_MAX_POS 260
   
   #if ENABLED(HOME_ADJUST)
     #define X_MIN_POS X_HOME_LOCATION
     #define Y_MIN_POS Y_HOME_LOCATION
   #else
-    #define X_MIN_POS 0
-    #define Y_MIN_POS 0
+    #define X_MIN_POS -7
+    #define Y_MIN_POS -7
   #endif
   
   #define ENCODER_PULSES_PER_STEP 4
@@ -745,7 +985,7 @@
 #endif //end i3 settings
 
 //CR-10 and Ender 3 Model Settings
-#if ENABLED(CR10) || ENABLED(CR10_MINI) || ENABLED(CR10_S4) || ENABLED(CR10_S5) || ENABLED(ENDER3)
+#if ENABLED(CR10) || ENABLED(CR10_MINI) || ENABLED(CR10_S4) || ENABLED(CR10_S5) || ENABLED(ENDER3) || ENABLED(ENDER5)
   #define SLIM_1284P
   #define BAUDRATE 115200
 
@@ -836,6 +1076,12 @@
     #define Y_BED_SIZE 235
     #define Z_MAX_POS 250
   #endif
+  
+  #if ENABLED(ENDER5)
+    #define X_BED_SIZE 220
+    #define Y_BED_SIZE 220
+    #define Z_MAX_POS 300
+  #endif
 
   #if ENABLED(HOME_ADJUST)
     #define X_MIN_POS X_HOME_LOCATION
@@ -853,7 +1099,7 @@
 #endif //end CR-10
 
 //CR-10S Model Settings
-#if ENABLED(CR10S) || ENABLED(CR10S_MINI) || ENABLED(CR10S_S4) || ENABLED(CR10S_S5) || ENABLED(ENDER3_DUALBOARD)
+#if ENABLED(CR10S) || ENABLED(CR10S_MINI) || ENABLED(CR10S_S4) || ENABLED(CR10S_S5) || ENABLED(ENDER3_DUALBOARD) || ENABLED(CR20)
   #define BAUDRATE 115200
   
   #if ENABLED(TOUCH_LCD_FIX)
@@ -862,6 +1108,8 @@
 
   #if ENABLED(CR10LCD_CR10S) || ENABLED(ENDER3_DUALBOARD)
     #define CR10_STOCKDISPLAY
+  #elif ENABLED(CR20)
+    #define MINIPANEL
   #else
     #define REPRAP_DISCOUNT_FULL_GRAPHIC_SMART_CONTROLLER
   #endif
@@ -947,10 +1195,16 @@
     #define Z_MAX_POS 250
   #endif
   
+  #if ENABLED(CR20)
+    #define X_BED_SIZE 220
+    #define Y_BED_SIZE 220
+    #define Z_MAX_POS 320
+  #endif
+  
   //dual extrusion options
   
   //single hotend y adapter
-  #if ENABLED(SINGLE_HOTEND_YADAPTER)
+  #if ENABLED(DUAL_EXTRUDER_SINGLE_HOTEND)
     #define CR10SDUALEBOARD
     #define SINGLENOZZLE
     
@@ -975,19 +1229,6 @@
     #define HOTEND_OFFSET_X {0.0, DUAL_HOTEND_X_DISTANCE} // (in mm) for each extruder, offset of the hotend on the X axis
     #define HOTEND_OFFSET_Y {0.0, 0.00}  // (in mm) for each extruder, offset of the hotend on the Y axis
   
-  #endif
-
-  //dual hotend single mixing nozzle
-  #if ENABLED(DUAL_HOTEND_SINGLE_NOZZLE)
-    #define CR10SDUALEBOARD
-    #define SINGLENOZZLE
-        
-    #if ENABLED(TITAN_EXTRUDER) || ENABLED(BONDTECH_EXTRUDER)
-      #define INVERT_E1_DIR true
-    #else
-      #define INVERT_E1_DIR false
-    #endif
-
   #endif
 
   #if ENABLED(HOME_ADJUST)
@@ -1463,6 +1704,20 @@
   #endif
 #endif
 
+#if ENABLED(TH3D_RGB_STRIP)
+  #define NEOPIXEL_LED
+  #define NEOPIXEL_TYPE   NEO_GRB
+  #define NEOPIXEL_PIN    19
+  #if ENABLED(AR_EZ300)
+    #define NEOPIXEL_PIXELS 4
+  #else
+    #define NEOPIXEL_PIXELS TH3D_RGB_STRIP_LED_COUNT
+  #endif
+  #define NEOPIXEL_IS_SEQUENTIAL
+  #define NEOPIXEL_BRIGHTNESS 255
+  #define PRINTER_EVENT_LEDS
+#endif
+
 //Misc Settings
 #if DISABLED(TH3DINHOUSEMACHINE)
   #if defined(USER_PRINTER_NAME)
@@ -1616,6 +1871,10 @@
     #define DEFAULT_Kp 23.55
     #define DEFAULT_Ki 1.82
     #define DEFAULT_Kd 76.21
+  #elif ENABLED(TIM_TORNADO)
+    #define DEFAULT_Kp 31.89
+    #define DEFAULT_Ki 4.99
+    #define DEFAULT_Kd 50.94
   #else  
     #define  DEFAULT_Kp 22.2
     #define  DEFAULT_Ki 1.08
@@ -1623,13 +1882,9 @@
   #endif
 #endif 
 
-#if DISABLED(PIDBED_DISABLE)
-  #if DISABLED(TORNADO)
-    #if DISABLED(KEENOVO_TEMPSENSOR)
-      #if DISABLED(SLIM_1284P)
-        #define PIDTEMPBED
-      #endif
-    #endif
+#if ENABLED(PIDBED_ENABLE)
+  #if DISABLED(SLIM_1284P) && DISABLED(MANUAL_MESH_LEVELING)
+    #define PIDTEMPBED
   #endif
 #endif
 
@@ -1673,7 +1928,11 @@
 
 #define Z_MIN_PROBE_USES_Z_MIN_ENDSTOP_PIN
 
-#define HOMING_FEEDRATE_XY (50*60)
+#if ENABLED(SLOWER_HOMING)
+  #define HOMING_FEEDRATE_XY (20*60)
+#else
+  #define HOMING_FEEDRATE_XY (40*60)
+#endif
 
 #if ENABLED(EZABL_FASTPROBE)
 	#define HOMING_FEEDRATE_Z  (8*60)
@@ -1719,7 +1978,7 @@
   #endif
 #endif  
 
-#if ENABLED(NEW_ACCELERATION_CONTROL) && DISABLED(POWER_LOSS_RECOVERY)
+#if DISABLED(POWER_LOSS_RECOVERY)
   #define S_CURVE_ACCELERATION
 #endif
 
@@ -1745,6 +2004,10 @@
 #if ENABLED(WANHAO_I3MINI)
   #define X_HOME_DIR 1
   #define Y_HOME_DIR -1
+  #define Z_HOME_DIR -1
+#elif ENABLED(ENDER5)
+  #define X_HOME_DIR 1
+  #define Y_HOME_DIR 1
   #define Z_HOME_DIR -1
 #else
   #define X_HOME_DIR -1
@@ -1772,10 +2035,10 @@
   #define MAX_SOFTWARE_ENDSTOP_Z
 #endif
 
-#if ENABLED(EZOUT_ENABLE) || ENABLED(EZOUTV2_ENABLE) || (ENABLED(CR10S) && DISABLED(CR10S_NOFILAMENTSENSOR)) || (ENABLED(CR10S_MINI) && DISABLED(CR10S_NOFILAMENTSENSOR))  || (ENABLED(CR10S_S4) && DISABLED(CR10S_NOFILAMENTSENSOR)) || (ENABLED(CR10S_S5) && DISABLED(CR10S_NOFILAMENTSENSOR)) || ENABLED(ALFAWISE_U10)
+#if ENABLED(EZOUT_ENABLE) || ENABLED(EZOUTV2_ENABLE) || (ENABLED(CR10S) && DISABLED(CR10S_NOFILAMENTSENSOR)) || (ENABLED(CR10S_MINI) && DISABLED(CR10S_NOFILAMENTSENSOR))  || (ENABLED(CR10S_S4) && DISABLED(CR10S_NOFILAMENTSENSOR)) || (ENABLED(CR10S_S5) && DISABLED(CR10S_NOFILAMENTSENSOR)) || ENABLED(ALFAWISE_U10) || ENABLED(ADIM_GANTRY_I3_PLUS)
   #define FILAMENT_RUNOUT_SENSOR
   #if ENABLED(FILAMENT_RUNOUT_SENSOR)
-    #if ENABLED(EZOUT_ENABLE) || ENABLED(EZOUTV2_ENABLE)
+    #if ENABLED(EZOUT_ENABLE) || ENABLED(EZOUTV2_ENABLE) || ENABLED(ADIM_GANTRY_I3_PLUS)
       #define FIL_RUNOUT_INVERTING false
     #else
       #define FIL_RUNOUT_INVERTING true
