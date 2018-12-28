@@ -445,7 +445,7 @@
 #define TITAN_EXTRUDER_STEPS 463
 
 // If you are using a Bondtech Extruder uncomment the bellow line to setup the firmware to the correct steps and direction
-#define BONDTECH_EXTRUDER
+//#define BONDTECH_EXTRUDER
 #define BONDTECH_EXTRUDER_STEPS 415
 
 // DUAL HOTEND SETTINGS ----------------------------
