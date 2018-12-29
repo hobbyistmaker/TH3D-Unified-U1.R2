@@ -258,7 +258,7 @@
 //===========================================================================
 // Creality Ender 3 Options - Select 'Sanguino 1284p' from Tools > Board
 //===========================================================================
-//#define ENDER3
+#define ENDER3
 
 // If you are using our EZOut V1/V2 (connected to LCD header) filament sensor kit please follow the install guide
 // and then uncomment the #define EZOUT_ENABLE line below.
@@ -618,7 +618,7 @@
 // to help you use this feature. This is for generating a MANUAL mesh WITHOUT a probe. 
 // Mesh Bed Leveling Documentation: http://marlinfw.org/docs/gcode/G029-mbl.html
 // If used with a 1284P board the bootscreen will be disabled to save space.
-//#define MANUAL_MESH_LEVELING
+#define MANUAL_MESH_LEVELING
 
 // !!!USE AT YOUR OWN RISK!!!
 // Continue after Power-Loss feature will store the current state to the SD Card at the start of each layer
