@@ -184,7 +184,7 @@ uint16_t max_display_update_time = 0;
     void lcd_control_temperature_preheat_material2_settings_menu();
   #endif
 
-  #if DISABLED(NO_VOLUMETRICS) || ENABLED(ADVANCED_PAUSE_FEATURE)
+  #if DISABLED(NO_VOLUMETRICS) || (ENABLED(ADVANCED_PAUSE_FEATURE) && DISABLED(SLIM_LCD_MENUS))
     void lcd_control_filament_menu();
   #endif
 
@@ -958,25 +958,56 @@ void lcd_quick_feedback(const bool clear_buttons) {
 
   #if ENABLED(BLTOUCH)
 
-    /**
-     *
-     * "BLTouch" submenu
-     *
-     */
-    static void bltouch_menu() {
+    extern void _bltouch_reset();
+    extern void _bltouch_selftest();
+    extern void _bltouch_deploy();
+    extern void _bltouch_stow();
+    extern void _bltouch_set_SW_mode();
+    extern void _bltouch_set_5V_mode();
+    extern void _bltouch_set_OD_mode();
+    extern void _bltouch_mode_store();
+    extern void bltouch_mode_conv_5V();
+    extern void bltouch_mode_conv_OD();
+    extern bool bltouch_last_written_mode;
+
+    #if ENABLED(BLTOUCH_LCD_VOLTAGE_MENU)
+      void bltouch_report() {
+        SERIAL_ECHOLNPAIR("EEPROM Last BLTouch Mode - ", (int)bltouch_last_written_mode);
+        SERIAL_ECHOLNPGM("Configuration BLTouch Mode - "
+          #if ENABLED(BLTOUCH_SET_5V_MODE)
+            "5V"
+          #else
+            "OD"
+          #endif
+        );
+        char mess[21];
+        strcpy_P(mess, PSTR("BLTouch Mode - "));
+        strcpy_P(&mess[15], bltouch_last_written_mode ? PSTR("5V") : PSTR("OD"));
+        lcd_setalertstatusPGM(mess);
+        lcd_return_to_status();
+      }
+    #endif
+
+    void bltouch_menu() {
       START_MENU();
-      //
-      // ^ Main
-      //
       MENU_BACK(MSG_MAIN);
-      MENU_ITEM(gcode, MSG_BLTOUCH_RESET, PSTR("M280 P" STRINGIFY(Z_PROBE_SERVO_NR) " S" STRINGIFY(BLTOUCH_RESET)));
-      MENU_ITEM(gcode, MSG_BLTOUCH_SELFTEST, PSTR("M280 P" STRINGIFY(Z_PROBE_SERVO_NR) " S" STRINGIFY(BLTOUCH_SELFTEST)));
-      MENU_ITEM(gcode, MSG_BLTOUCH_DEPLOY, PSTR("M280 P" STRINGIFY(Z_PROBE_SERVO_NR) " S" STRINGIFY(BLTOUCH_DEPLOY)));
-      MENU_ITEM(gcode, MSG_BLTOUCH_STOW, PSTR("M280 P" STRINGIFY(Z_PROBE_SERVO_NR) " S" STRINGIFY(BLTOUCH_STOW)));
+      MENU_ITEM(function, MSG_BLTOUCH_RESET, _bltouch_reset);
+      MENU_ITEM(function, MSG_BLTOUCH_SELFTEST, _bltouch_selftest);
+      MENU_ITEM(function, MSG_BLTOUCH_DEPLOY, _bltouch_deploy);
+      MENU_ITEM(function, MSG_BLTOUCH_STOW, _bltouch_stow);
+      MENU_ITEM(function, MSG_BLTOUCH_SW_MODE, _bltouch_set_SW_mode);
+      #if ENABLED(BLTOUCH_LCD_VOLTAGE_MENU)
+        MENU_ITEM(function, MSG_BLTOUCH_5V_MODE, _bltouch_set_5V_mode);
+        MENU_ITEM(function, MSG_BLTOUCH_OD_MODE, _bltouch_set_OD_mode);
+        MENU_ITEM(function, MSG_BLTOUCH_MODE_STORE, _bltouch_mode_store);
+        MENU_ITEM(function, MSG_BLTOUCH_MODE_STORE_5V, bltouch_mode_conv_5V);
+        MENU_ITEM(function, MSG_BLTOUCH_MODE_STORE_OD, bltouch_mode_conv_OD);
+        MENU_ITEM(function, MSG_BLTOUCH_MODE_ECHO, bltouch_report);
+      #endif
       END_MENU();
     }
 
-  #endif // BLTOUCH
+  #endif
 
   #if ENABLED(LCD_PROGRESS_BAR_TEST)
 
@@ -1824,12 +1855,18 @@ void lcd_quick_feedback(const bool clear_buttons) {
 
   #if ENABLED(LEVEL_BED_CORNERS)
 
+    #ifndef LEVEL_CORNERS_Z_HOP
+      #define LEVEL_CORNERS_Z_HOP 4.0
+    #endif
+
+    static_assert(LEVEL_CORNERS_Z_HOP >= 0, "LEVEL_CORNERS_Z_HOP must be >= 0. Please update your configuration.");
+
     /**
      * Level corners, starting in the front-left corner.
      */
     static int8_t bed_corner;
     void _lcd_goto_next_corner() {
-      line_to_z(4.0);
+      line_to_z(LEVEL_CORNERS_Z_HOP);
       switch (bed_corner) {
         case 0:
           current_position[X_AXIS] = X_MIN_BED + LEVEL_CORNERS_INSET;
@@ -2773,7 +2810,7 @@ void lcd_quick_feedback(const bool clear_buttons) {
     //
     // BLTouch Self-Test and Reset
     //
-    #if ENABLED(BLTOUCH)
+    #if ENABLED(BLTOUCH) && DISABLED(SLIM_1284P)
       MENU_ITEM(gcode, MSG_BLTOUCH_SELFTEST, PSTR("M280 P" STRINGIFY(Z_PROBE_SERVO_NR) " S" STRINGIFY(BLTOUCH_SELFTEST)));
       if (!endstops.z_probe_enabled && TEST_BLTOUCH())
         MENU_ITEM(gcode, MSG_BLTOUCH_RESET, PSTR("M280 P" STRINGIFY(Z_PROBE_SERVO_NR) " S" STRINGIFY(BLTOUCH_RESET)));
@@ -2888,8 +2925,6 @@ void lcd_quick_feedback(const bool clear_buttons) {
       MENU_BACK(MSG_MAIN);
       #if ENABLED(DELTA_AUTO_CALIBRATION)
         MENU_ITEM(gcode, MSG_DELTA_AUTO_CALIBRATE, PSTR("G33"));
-        MENU_ITEM(gcode, MSG_DELTA_HEIGHT_CALIBRATE, PSTR("G33 P1"));
-        MENU_ITEM(gcode, MSG_DELTA_Z_OFFSET_CALIBRATE, PSTR("G33 P-1"));
         #if ENABLED(EEPROM_SETTINGS)
           MENU_ITEM(function, MSG_STORE_EEPROM, lcd_store_settings);
         #endif
@@ -3312,7 +3347,7 @@ void lcd_quick_feedback(const bool clear_buttons) {
     lcd_completion_feedback();
   }
 
-  #if ENABLED(EEPROM_SETTINGS)
+  #if ENABLED(EEPROM_SETTINGS) && DISABLED(SLIM_LCD_MENUS)
 
     static void lcd_init_eeprom() {
       lcd_completion_feedback(settings.init_eeprom());
@@ -3334,8 +3369,12 @@ void lcd_quick_feedback(const bool clear_buttons) {
     MENU_ITEM(submenu, MSG_TEMPERATURE, lcd_control_temperature_menu);
     MENU_ITEM(submenu, MSG_MOTION, lcd_control_motion_menu);
 
-    #if DISABLED(NO_VOLUMETRICS) || ENABLED(ADVANCED_PAUSE_FEATURE)
-      MENU_ITEM(submenu, MSG_FILAMENT, lcd_control_filament_menu);
+    #if DISABLED(NO_VOLUMETRICS) || (ENABLED(ADVANCED_PAUSE_FEATURE) && DISABLED(SLIM_LCD_MENUS))
+      #if ENABLED(BLTOUCH) && ENABLED(SLIM_1284P)
+        //nothing
+      #else
+        MENU_ITEM(submenu, MSG_FILAMENT, lcd_control_filament_menu);
+      #endif
     #elif ENABLED(LIN_ADVANCE)
       MENU_ITEM_EDIT(float52, MSG_ADVANCE_K, &planner.extruder_advance_K, 0, 999);
     #endif
@@ -3361,7 +3400,9 @@ void lcd_quick_feedback(const bool clear_buttons) {
       MENU_ITEM(function, MSG_STORE_EEPROM, lcd_store_settings);
     #endif
 
-    #if ENABLED(EEPROM_SETTINGS)
+    MENU_ITEM(function, MSG_RESTORE_FAILSAFE, lcd_factory_settings);
+
+    #if ENABLED(EEPROM_SETTINGS) && DISABLED(SLIM_LCD_MENUS)
       MENU_ITEM(submenu, MSG_INIT_EEPROM, lcd_init_eeprom_confirm);
     #endif
 
@@ -3409,14 +3450,14 @@ void lcd_quick_feedback(const bool clear_buttons) {
         UNUSED(e);
       #endif
       PID_PARAM(Ki, e) = scalePID_i(raw_Ki);
-      thermalManager.updatePID();
+      thermalManager.update_pid();
     }
     void copy_and_scalePID_d(int16_t e) {
       #if DISABLED(PID_PARAMS_PER_HOTEND) || HOTENDS == 1
         UNUSED(e);
       #endif
       PID_PARAM(Kd, e) = scalePID_d(raw_Kd);
-      thermalManager.updatePID();
+      thermalManager.update_pid();
     }
     #define _DEFINE_PIDTEMP_BASE_FUNCS(N) \
       void copy_and_scalePID_i_E ## N() { copy_and_scalePID_i(N); } \
@@ -3519,7 +3560,7 @@ void lcd_quick_feedback(const bool clear_buttons) {
       MENU_ITEM_EDIT(bool, MSG_AUTOTEMP, &planner.autotemp_enabled);
       MENU_ITEM_EDIT(float3, MSG_MIN, &planner.autotemp_min, 0, float(HEATER_0_MAXTEMP) - 15);
       MENU_ITEM_EDIT(float3, MSG_MAX, &planner.autotemp_max, 0, float(HEATER_0_MAXTEMP) - 15);
-      MENU_ITEM_EDIT(float52, MSG_FACTOR, &planner.autotemp_factor, 0, 1);
+      MENU_ITEM_EDIT(float52, MSG_FACTOR, &planner.autotemp_factor, 0, 10);
     #endif
 
     //
@@ -3773,11 +3814,9 @@ void lcd_quick_feedback(const bool clear_buttons) {
     void lcd_control_motion_steps_per_mm_menu() {
       START_MENU();
       MENU_BACK(MSG_MOTION);
-
       MENU_MULTIPLIER_ITEM_EDIT_CALLBACK(float62, MSG_ASTEPS, &planner.axis_steps_per_mm[A_AXIS], 5, 9999, _planner_refresh_positioning);
       MENU_MULTIPLIER_ITEM_EDIT_CALLBACK(float62, MSG_BSTEPS, &planner.axis_steps_per_mm[B_AXIS], 5, 9999, _planner_refresh_positioning);
       MENU_MULTIPLIER_ITEM_EDIT_CALLBACK(float62, MSG_CSTEPS, &planner.axis_steps_per_mm[C_AXIS], 5, 9999, _planner_refresh_positioning);
-
       #if ENABLED(DISTINCT_E_FACTORS)
         MENU_MULTIPLIER_ITEM_EDIT_CALLBACK(float62, MSG_ESTEPS, &planner.axis_steps_per_mm[E_AXIS + active_extruder], 5, 9999, _planner_refresh_positioning);
         MENU_MULTIPLIER_ITEM_EDIT_CALLBACK(float62, MSG_E1STEPS, &planner.axis_steps_per_mm[E_AXIS], 5, 9999, _planner_refresh_e0_positioning);
@@ -3840,7 +3879,7 @@ void lcd_quick_feedback(const bool clear_buttons) {
     END_MENU();
   }
 
-  #if DISABLED(NO_VOLUMETRICS) || ENABLED(ADVANCED_PAUSE_FEATURE)
+  #if DISABLED(NO_VOLUMETRICS) || (ENABLED(ADVANCED_PAUSE_FEATURE) && DISABLED(SLIM_LCD_MENUS))
     /**
      *
      * "Control" > "Filament" submenu
@@ -3888,7 +3927,7 @@ void lcd_quick_feedback(const bool clear_buttons) {
 
         #if EXTRUDERS == 1
           #if DISABLED(SLIM_LCD_MENUS)
-          	MENU_MULTIPLIER_ITEM_EDIT(float3, MSG_FILAMENT_UNLOAD, &filament_change_unload_length[0], 0, extrude_maxlength);
+            MENU_MULTIPLIER_ITEM_EDIT(float3, MSG_FILAMENT_UNLOAD, &filament_change_unload_length[0], 0, extrude_maxlength);
           #endif
         #else // EXTRUDERS > 1
           MENU_MULTIPLIER_ITEM_EDIT(float3, MSG_FILAMENT_UNLOAD, &filament_change_unload_length[active_extruder], 0, extrude_maxlength);
@@ -4265,10 +4304,10 @@ void lcd_quick_feedback(const bool clear_buttons) {
       MENU_BACK(MSG_MAIN);
       bool led_on = leds.lights_on;
       MENU_ITEM_EDIT_CALLBACK(bool, MSG_LEDS, &led_on, leds.toggle);
+      MENU_ITEM(function, MSG_SET_LEDS_DEFAULT, leds.set_default);
       #if ENABLED(LED_COLOR_PRESETS)
         MENU_ITEM(submenu, MSG_LED_PRESETS, lcd_led_presets_menu);
       #endif
-      MENU_ITEM(function, MSG_SET_LEDS_DEFAULT, leds.set_default);
       MENU_ITEM(submenu, MSG_CUSTOM_LEDS, lcd_led_custom_menu);
       END_MENU();
     }
@@ -5605,15 +5644,14 @@ void lcd_reset_alert_level() { lcd_status_message_level = 0; }
 
         #endif // LCD_HAS_DIRECTIONAL_BUTTONS
 
-        buttons = newbutton;
         #if ENABLED(LCD_HAS_SLOW_BUTTONS)
-          buttons |= slow_buttons;
+          newbutton |= slow_buttons;
         #endif
+        buttons = newbutton;
 
         #if ENABLED(ADC_KEYPAD)
 
           uint8_t newbutton_reprapworld_keypad = 0;
-          buttons = 0;
           if (buttons_reprapworld_keypad == 0) {
             newbutton_reprapworld_keypad = get_ADC_keyValue();
             if (WITHIN(newbutton_reprapworld_keypad, 1, 8))

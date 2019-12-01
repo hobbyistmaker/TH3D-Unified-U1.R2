@@ -1169,8 +1169,10 @@ void Planner::recalculate() {
  * Maintain fans, paste extruder pressure,
  */
 void Planner::check_axes_activity() {
-  unsigned char axis_active[NUM_AXIS] = { 0 },
-                tail_fan_speed[FAN_COUNT];
+  uint8_t axis_active[NUM_AXIS] = { 0 };
+  #if FAN_COUNT > 0
+    uint8_t tail_fan_speed[FAN_COUNT] = { 0 };
+  #endif
 
   #if ENABLED(BARICUDA)
     #if HAS_HEATER_1
@@ -2299,6 +2301,15 @@ bool Planner::_populate_block(block_t * const block, bool split_move,
       delta_mm[C_AXIS] * inverse_millimeters,
       delta_mm[E_AXIS] * inverse_millimeters
     };
+
+    #if IS_CORE && ENABLED(JUNCTION_DEVIATION)
+      /**
+       * On CoreXY the length of the vector [A,B] is SQRT(2) times the length of the head movement vector [X,Y].
+       * So taking Z and E into account, we cannot scale to a unit vector with "inverse_millimeters".
+       * => normalize the complete junction vector
+       */
+      normalize_junction_vector(unit_vec);
+    #endif
 
     // Skip first block or when previous_nominal_speed is used as a flag for homing and offset cycles.
     if (moves_queued && !UNEAR_ZERO(previous_nominal_speed_sqr)) {

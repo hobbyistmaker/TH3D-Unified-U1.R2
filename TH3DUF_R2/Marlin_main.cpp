@@ -272,6 +272,15 @@
 #include "duration_t.h"
 #include "types.h"
 #include "parser.h"
+#if ENABLED(WANHAO_I3_PLUS)
+  #include "advi3pp.h" // @advi3++
+  #include "advi3pp_log.h"
+
+  // @advi3++: This is only to ensure that Jetbrains CLion is parsing code properly inside the IDE
+  #ifdef __CLION_IDE__
+  #define HAS_BED_PROBE 1
+  #endif
+#endif
 
 #if ENABLED(AUTO_POWER_CONTROL)
   #include "power.h"
@@ -601,13 +610,7 @@ uint8_t target_extruder;
 #endif
 
 #if HAS_POWER_SWITCH
-  bool powersupply_on = (
-    #if ENABLED(PS_DEFAULT_OFF)
-      false
-    #else
-      true
-    #endif
-  );
+  bool powersupply_on;
   #if ENABLED(AUTO_POWER_CONTROL)
     #define PSU_ON()  powerManager.power_on()
     #define PSU_OFF() powerManager.power_off()
@@ -899,6 +902,12 @@ inline void _commit_command(bool say_ok) {
  * Return false for a full buffer, or if the 'command' is a comment.
  */
 inline bool _enqueuecommand(const char* cmd, bool say_ok=false) {
+  #if ENABLED(WANHAO_I3_PLUS)
+    // @advi3++: Makes debugging easier
+    if(commands_in_queue >= BUFSIZE)
+      advi3pp::Log::error() << F("Command was not queued: ") << cmd << advi3pp::Log::endl();
+  #endif
+
   if (*cmd == ';' || commands_in_queue >= BUFSIZE) return false;
   strcpy(command_queue[cmd_queue_index_w], cmd);
   _commit_command(say_ok);
@@ -943,9 +952,9 @@ void setup_powerhold() {
   #endif
   #if HAS_POWER_SWITCH
     #if ENABLED(PS_DEFAULT_OFF)
-      PSU_OFF();
+      powersupply_on = true;  PSU_OFF();
     #else
-      PSU_ON();
+      powersupply_on = false; PSU_ON();
     #endif
   #endif
 }
@@ -1383,7 +1392,11 @@ bool get_target_extruder_from_command(const uint16_t code) {
       }
     #elif ENABLED(DELTA)
       soft_endstop_min[axis] = base_min_pos(axis);
-      soft_endstop_max[axis] = axis == Z_AXIS ? delta_height : base_max_pos(axis);
+      soft_endstop_max[axis] = axis == Z_AXIS ? delta_height
+      #if HAS_BED_PROBE
+        - zprobe_zoffset
+      #endif
+      : base_max_pos(axis);
     #else
       soft_endstop_min[axis] = base_min_pos(axis);
       soft_endstop_max[axis] = base_max_pos(axis);
@@ -1512,13 +1525,14 @@ static void set_axis_is_at_home(const AxisEnum axis) {
     }
     else
   #elif ENABLED(DELTA)
-    if (axis == Z_AXIS)
-      current_position[axis] = delta_height;
-    else
-  #endif
-  {
+    current_position[axis] = (axis == Z_AXIS ? delta_height
+    #if HAS_BED_PROBE
+      - zprobe_zoffset
+    #endif
+    : base_home_pos(axis));
+  #else
     current_position[axis] = base_home_pos(axis);
-  }
+  #endif
 
   /**
    * Z Probe Z Homing? Account for the probe's Z offset.
@@ -2077,40 +2091,240 @@ void clean_up_after_endstop_or_probe_move() {
 
   #if ENABLED(BLTOUCH)
 
-    void bltouch_command(int angle) {
-      MOVE_SERVO(Z_PROBE_SERVO_NR, angle);  // Give the BL-Touch the command and wait
-      safe_delay(BLTOUCH_DELAY);
+    typedef unsigned char BLTCommand;
+    void bltouch_init(const bool set_voltage=false);
+    bool bltouch_last_written_mode; // Initialized by settings.load, 0 = Open Drain; 1 = 5V Drain
+
+    bool bltouch_triggered() {
+      return (
+        #if ENABLED(Z_MIN_PROBE_USES_Z_MIN_ENDSTOP_PIN)
+          READ(Z_MIN_PIN) != Z_MIN_ENDSTOP_INVERTING
+        #else
+          READ(Z_MIN_PROBE_PIN) != Z_MIN_PROBE_ENDSTOP_INVERTING
+        #endif
+      );
     }
 
-    bool set_bltouch_deployed(const bool deploy) {
-      if (deploy && TEST_BLTOUCH()) {      // If BL-Touch says it's triggered
-        bltouch_command(BLTOUCH_RESET);    //  try to reset it.
-        bltouch_command(BLTOUCH_DEPLOY);   // Also needs to deploy and stow to
-        bltouch_command(BLTOUCH_STOW);     //  clear the triggered condition.
-        safe_delay(1500);                  // Wait for internal self-test to complete.
-                                           //  (Measured completion time was 0.65 seconds
-                                           //   after reset, deploy, and stow sequence)
-        if (TEST_BLTOUCH()) {              // If it still claims to be triggered...
-          SERIAL_ERROR_START();
-          SERIAL_ERRORLNPGM(MSG_STOP_BLTOUCH);
-          stop();                          // punt!
-          return true;
+    bool bltouch_command(const BLTCommand cmd, const millis_t &ms) {
+      #if ENABLED(DEBUG_LEVELING_FEATURE)
+        if (DEBUGGING(LEVELING)) SERIAL_ECHOLNPAIR("BLTouch Command :", cmd);
+      #endif
+      MOVE_SERVO(Z_PROBE_SERVO_NR, cmd);
+      safe_delay(MAX(ms, (uint32_t)BLTOUCH_DELAY)); // BLTOUCH_DELAY is also the *minimum* delay
+      return bltouch_triggered();
+    }
+
+    // Native BLTouch commands ("Underscore"...), used in lcd menus and internally
+    void _bltouch_reset()              { bltouch_command(BLTOUCH_RESET, BLTOUCH_RESET_DELAY); }
+
+    void _bltouch_selftest()           { bltouch_command(BLTOUCH_SELFTEST, BLTOUCH_DELAY); }
+
+    void _bltouch_set_SW_mode()        { bltouch_command(BLTOUCH_SW_MODE, BLTOUCH_DELAY); }
+
+    void _bltouch_set_5V_mode()        { bltouch_command(BLTOUCH_5V_MODE, BLTOUCH_SET5V_DELAY); }
+    void _bltouch_set_OD_mode()        { bltouch_command(BLTOUCH_OD_MODE, BLTOUCH_SETOD_DELAY); }
+    void _bltouch_mode_store()         { bltouch_command(BLTOUCH_MODE_STORE, BLTOUCH_MODE_STORE_DELAY); }
+
+    void _bltouch_deploy()             { bltouch_command(BLTOUCH_DEPLOY, BLTOUCH_DEPLOY_DELAY); }
+    void _bltouch_stow()               { bltouch_command(BLTOUCH_STOW, BLTOUCH_STOW_DELAY); }
+
+    void _bltouch_reset_SW_mode()      { if (bltouch_triggered()) _bltouch_stow(); else _bltouch_deploy(); }
+
+    bool _bltouch_deploy_query_alarm() { return bltouch_command(BLTOUCH_DEPLOY, BLTOUCH_DEPLOY_DELAY); }
+    bool _bltouch_stow_query_alarm()   { return bltouch_command(BLTOUCH_STOW, BLTOUCH_STOW_DELAY); }
+
+    void bltouch_clear() {
+      _bltouch_reset();    // RESET or RESET_SW will clear an alarm condition but...
+                  // ...it will not clear a triggered condition in SW mode when the pin is currently up
+                  // ANTClabs <-- CODE ERROR
+      _bltouch_stow();     // STOW will pull up the pin and clear any triggered condition unless it fails, don't care
+      _bltouch_deploy();   // DEPLOY to test the probe. Could fail, don't care
+      _bltouch_stow();     // STOW to be ready for meaningful work. Could fail, don't care
+    }
+
+    bool bltouch_deploy_proc() {
+      // Do a DEPLOY
+      #if ENABLED(DEBUG_LEVELING_FEATURE)
+        if (DEBUGGING(LEVELING)) SERIAL_ECHOLNPGM("BLTouch DEPLOY requested");
+      #endif
+
+      // Attempt to DEPLOY, wait for DEPLOY_DELAY or ALARM
+      if (_bltouch_deploy_query_alarm()) {
+        // The deploy might have failed or the probe is already triggered (nozzle too low?)
+        #if ENABLED(DEBUG_LEVELING_FEATURE)
+          if (DEBUGGING(LEVELING)) SERIAL_ECHOLNPGM("BLTouch ALARM or TRIGGER after DEPLOY, recovering");
+        #endif
+
+        bltouch_clear();                               // Get the probe into start condition
+
+        // Last attempt to DEPLOY
+        if (_bltouch_deploy_query_alarm()) {
+          // The deploy might have failed or the probe is actually triggered (nozzle too low?) again
+          #if ENABLED(DEBUG_LEVELING_FEATURE)
+            if (DEBUGGING(LEVELING)) SERIAL_ECHOLNPGM("BLTouch Recovery Failed");
+          #endif
+
+          SERIAL_ECHOLN(MSG_STOP_BLTOUCH);  // Tell the user something is wrong, needs action
+          stop();                              // but it's not too bad, no need to kill, allow restart
+
+          return true;                         // Tell our caller we goofed in case he cares to know
         }
       }
 
-      bltouch_command(deploy ? BLTOUCH_DEPLOY : BLTOUCH_STOW);
-
-      #if ENABLED(DEBUG_LEVELING_FEATURE)
-        if (DEBUGGING(LEVELING)) {
-          SERIAL_ECHOPAIR("set_bltouch_deployed(", deploy);
-          SERIAL_CHAR(')');
-          SERIAL_EOL();
-        }
+      // One of the recommended ANTClabs ways to probe, using SW MODE
+      #if ENABLED(BLTOUCH_FORCE_SW_MODE)
+      _bltouch_set_SW_mode();
       #endif
 
+      // Now the probe is ready to issue a 10ms pulse when the pin goes up.
+      // The trigger STOW (see motion.cpp for example) will pull up the probes pin as soon as the pulse
+      // is registered.
+      #if ENABLED(DEBUG_LEVELING_FEATURE)
+        if (DEBUGGING(LEVELING)) SERIAL_ECHOLNPGM("bltouch.deploy_proc() end");
+      #endif
+
+      return false; // report success to caller
+    }
+
+    bool bltouch_stow_proc() {
+      // Do a STOW
+      #if ENABLED(DEBUG_LEVELING_FEATURE)
+        if (DEBUGGING(LEVELING)) SERIAL_ECHOLNPGM("BLTouch STOW requested");
+      #endif
+
+      // A STOW will clear a triggered condition in the probe (10ms pulse).
+      // At the moment that we come in here, we might (pulse) or will (SW mode) see the trigger on the pin.
+      // So even though we know a STOW will be ignored if an ALARM condition is active, we will STOW.
+      // Note: If the probe is deployed AND in an ALARM condition, this STOW will not pull up the pin
+      // and the ALARM condition will still be there. --> ANTClabs should change this behavior maybe
+
+      // Attempt to STOW, wait for STOW_DELAY or ALARM
+      if (_bltouch_stow_query_alarm()) {
+        // The stow might have failed
+        #if ENABLED(DEBUG_LEVELING_FEATURE)
+          if (DEBUGGING(LEVELING)) SERIAL_ECHOLNPGM("BLTouch ALARM or TRIGGER after STOW, recovering");
+        #endif
+
+        _bltouch_reset();                              // This RESET will then also pull up the pin. If it doesn't
+                                              // work and the pin is still down, there will no longer be
+                                              // an ALARM condition though.
+                                              // But one more STOW will catch that
+        // Last attempt to STOW
+        if (_bltouch_stow_query_alarm()) {             // so if there is now STILL an ALARM condition:
+          #if ENABLED(DEBUG_LEVELING_FEATURE)
+            if (DEBUGGING(LEVELING)) SERIAL_ECHOLNPGM("BLTouch Recovery Failed");
+          #endif
+
+          SERIAL_ECHOLN(MSG_STOP_BLTOUCH);  // Tell the user something is wrong, needs action
+          stop();                              // but it's not too bad, no need to kill, allow restart
+
+          return true;                         // Tell our caller we goofed in case he cares to know
+        }
+      }
+
+      #if ENABLED(DEBUG_LEVELING_FEATURE)
+        if (DEBUGGING(LEVELING)) SERIAL_ECHOLNPGM("bltouch.stow_proc() end");
+      #endif
+
+      return false; // report success to caller
+    }
+
+    bool bltouch_status_proc() {
+      /**
+       * Return a TRUE for "YES, it is DEPLOYED"
+       * This function will ensure switch state is reset after execution
+       */
+
+      #if ENABLED(DEBUG_LEVELING_FEATURE)
+        if (DEBUGGING(LEVELING)) SERIAL_ECHOLNPGM("BLTouch STATUS requested");
+      #endif
+
+      _bltouch_set_SW_mode();              // Incidentally, _set_SW_mode() will also RESET any active alarm
+      const bool tr = bltouch_triggered(); // If triggered in SW mode, the pin is up, it is STOWED
+
+      #if ENABLED(DEBUG_LEVELING_FEATURE)
+        if (DEBUGGING(LEVELING)) SERIAL_ECHOLNPAIR("BLTouch is ", (int)tr);
+      #endif
+
+      if (tr) _bltouch_stow(); else _bltouch_deploy();  // Turn off SW mode, reset any trigger, honor pin state
+      return !tr;
+    }
+
+    void bltouch_mode_conv_proc(const bool M5V) {
+      /**
+       * BLTOUCH pre V3.0 and clones: No reaction at all to this sequence apart from a DEPLOY -> STOW
+       * BLTOUCH V3.0: This will set the mode (twice) and sadly, a STOW is needed at the end, because of the deploy
+       * BLTOUCH V3.1: This will set the mode and store it in the eeprom. The STOW is not needed but does not hurt
+       */
+      #if ENABLED(DEBUG_LEVELING_FEATURE)
+        if (DEBUGGING(LEVELING)) SERIAL_ECHOLNPAIR("BLTouch Set Mode - ", (int)M5V);
+      #endif
+      _bltouch_deploy();
+      if (M5V) _bltouch_set_5V_mode(); else _bltouch_set_OD_mode();
+      _bltouch_mode_store();
+      if (M5V) _bltouch_set_5V_mode(); else _bltouch_set_OD_mode();
+      _bltouch_stow();
+      bltouch_last_written_mode = M5V;
+    }
+
+    bool set_bltouch_deployed(const bool deploy) {
+      if (deploy) _bltouch_deploy(); else _bltouch_stow();
       return false;
     }
 
+    void bltouch_mode_conv_5V()        { bltouch_mode_conv_proc(true); }
+    void bltouch_mode_conv_OD()        { bltouch_mode_conv_proc(false); }
+
+    // DEPLOY and STOW are wrapped for error handling - these are used by homing and by probing
+    bool bltouch_deploy()              { return bltouch_deploy_proc(); }
+    bool bltouch_stow()                { return bltouch_stow_proc(); }
+    bool bltouch_status()              { return bltouch_status_proc(); }
+
+    // Init the class and device. Call from setup().
+    void bltouch_init(const bool set_voltage/*=false*/) {
+      // Voltage Setting (if enabled). At every Marlin initialization:
+      // BLTOUCH < V3.0 and clones: This will be ignored by the probe
+      // BLTOUCH V3.0: SET_5V_MODE or SET_OD_MODE (if enabled).
+      //               OD_MODE is the default on power on, but setting it does not hurt
+      //               This mode will stay active until manual SET_OD_MODE or power cycle
+      // BLTOUCH V3.1: SET_5V_MODE or SET_OD_MODE (if enabled).
+      //               At power on, the probe will default to the eeprom settings configured by the user
+      _bltouch_reset();
+      _bltouch_stow();
+
+      #if ENABLED(BLTOUCH_FORCE_MODE_SET)
+
+        constexpr bool should_set = true;
+
+      #else
+        #if ENABLED(DEBUG_LEVELING_FEATURE)
+          if (DEBUGGING(LEVELING)) {
+            SERIAL_ECHOPAIR("last_written_mode - ", int(bltouch_last_written_mode));
+            SERIAL_ECHOLNPGM("config mode - "
+              #if ENABLED(BLTOUCH_SET_5V_MODE)
+                "BLTOUCH_SET_5V_MODE"
+              #else
+                "OD"
+              #endif
+            );
+          }
+        #endif
+
+        const bool should_set = bltouch_last_written_mode != (false
+          #if ENABLED(BLTOUCH_SET_5V_MODE)
+            || true
+          #endif
+        );
+
+      #endif
+
+      if (should_set && set_voltage)
+        bltouch_mode_conv_proc((false
+          #if ENABLED(BLTOUCH_SET_5V_MODE)
+            || true
+          #endif
+        ));
+    }
   #endif // BLTOUCH
 
   /**
@@ -2269,14 +2483,38 @@ void clean_up_after_endstop_or_probe_move() {
     // Move down until probe triggered
     do_blocking_move_to_z(z, fr_mm_s);
 
-    // Check to see if the probe was triggered
-    const bool probe_triggered = TEST(endstops.trigger_state(),
-      #if ENABLED(Z_MIN_PROBE_USES_Z_MIN_ENDSTOP_PIN)
-        Z_MIN
+	#if ENABLED(WANHAO_I3_PLUS)
+      // @advi3++: In the simulator, the probe is always triggered
+      #if defined(ADVi3PP_SIMULATOR)
+      const bool probe_triggered = true;
+
       #else
-        Z_MIN_PROBE
+      // Check to see if the probe was triggered
+      const bool probe_triggered = TEST(endstops.trigger_state(),
+        #if ENABLED(Z_MIN_PROBE_USES_Z_MIN_ENDSTOP_PIN)
+          Z_MIN
+        #else
+          Z_MIN_PROBE
+        #endif
+      );
+
       #endif
-    );
+  
+      // @advi3++: Add more debug info
+      #if ENABLED(DEBUG_LEVELING_FEATURE)
+          if (DEBUGGING(LEVELING))
+              SERIAL_ECHOPAIR("Probe triggered: ", probe_triggered);
+      #endif
+    #else
+      // Check to see if the probe was triggered
+      const bool probe_triggered = TEST(endstops.trigger_state(),
+        #if ENABLED(Z_MIN_PROBE_USES_Z_MIN_ENDSTOP_PIN)
+          Z_MIN
+        #else
+          Z_MIN_PROBE
+        #endif
+      );
+    #endif
 
     #if QUIET_PROBING
       probing_pause(false);
@@ -2284,7 +2522,12 @@ void clean_up_after_endstop_or_probe_move() {
 
     // Retract BLTouch immediately after a probe if it was triggered
     #if ENABLED(BLTOUCH)
-      if (probe_triggered && set_bltouch_deployed(false)) return true;
+      #if ENABLED(WANHAO_I3_PLUS)
+        // @advi3++: Always stow the sensor, not only when the probe was triggered (otherwise, the sensor stays deployed in case of probing error)
+        if (set_bltouch_deployed(false)) return true;
+      #else      
+        if (probe_triggered && set_bltouch_deployed(false)) return true;
+      #endif
     #endif
 
     endstops.hit_on_purpose();
@@ -2308,7 +2551,12 @@ void clean_up_after_endstop_or_probe_move() {
    *
    * @return The raw Z position where the probe was triggered
    */
-  static float run_z_probe() {
+    #if ENABLED(WANHAO_I3_PLUS)
+      // @advi3++: Remove "static" because we need this function in ADVi3++ code
+      float run_z_probe() {
+    #else
+      static float run_z_probe() {
+    #endif
 
     #if ENABLED(DEBUG_LEVELING_FEATURE)
       if (DEBUGGING(LEVELING)) DEBUG_POS(">>> run_z_probe", current_position);
@@ -2436,8 +2684,14 @@ void clean_up_after_endstop_or_probe_move() {
     float nx = rx, ny = ry;
     if (probe_relative) {
       if (!position_is_reachable_by_probe(rx, ry)) return NAN;  // The given position is in terms of the probe
-      nx -= (X_PROBE_OFFSET_FROM_EXTRUDER);                     // Get the nozzle position
-      ny -= (Y_PROBE_OFFSET_FROM_EXTRUDER);
+      #if ENABLED(WANHAO_I3_PLUS)
+        // @advi3++
+        nx -= (advi3pp::ADVi3pp::x_probe_offset_from_extruder());                     // Get the nozzle position
+        ny -= (advi3pp::ADVi3pp::y_probe_offset_from_extruder());
+      #else
+        nx -= (X_PROBE_OFFSET_FROM_EXTRUDER);                     // Get the nozzle position
+        ny -= (Y_PROBE_OFFSET_FROM_EXTRUDER);
+      #endif
     }
     else if (!position_is_reachable(nx, ny)) return NAN;        // The given position is in terms of the nozzle
 
@@ -3083,6 +3337,13 @@ static void do_homing_move(const AxisEnum axis, const float distance, const floa
 
 static void homeaxis(const AxisEnum axis) {
 
+  #if MB(I3_PLUS)
+  /* @advi3++: fix for extruder stepper noise on the X_MIN switch.
+   * See: https://github.com/andrivet/ADVi3pp/commit/5da26d65fd23c923a3d7c16d39c7518396392a60*/
+  if (axis == X_AXIS)
+    disable_e_steppers();
+  #endif
+
   #if IS_SCARA
     // Only Z homing (with probe) is permitted
     if (axis != Z_AXIS) { BUZZ(100, 880); return; }
@@ -3513,7 +3774,8 @@ inline void gcode_G0_G1(
           const float e = clockwise ^ (r < 0) ? -1 : 1,             // clockwise -1/1, counterclockwise 1/-1
                       dx = p2 - p1, dy = q2 - q1,                   // X and Y differences
                       d = HYPOT(dx, dy),                            // Linear distance between the points
-                      h = SQRT(sq(r) - sq(d * 0.5f)),               // Distance to the arc pivot-point
+                      h2 = (r - 0.5f * d) * (r + 0.5f * d),         // factor to reduce rounding error
+                      h = (h2 >= 0) ? SQRT(h2) : 0.0f,              // Distance to the arc pivot-point
                       mx = (p1 + p2) * 0.5f, my = (q1 + q2) * 0.5f, // Point between the two points
                       sx = -dy / d, sy = dx / d,                    // Slope of the perpendicular bisector
                       cx = mx + e * h * sx, cy = my + e * h * sy;   // Pivot-point of the arc
@@ -3574,6 +3836,9 @@ inline void gcode_G4() {
   if (!lcd_hasstatus()) LCD_MESSAGEPGM(MSG_DWELL);
 
   dwell(dwell_ms);
+  #if ENABLED(WANHAO_I3_PLUS)
+    lcd_reset_status(); // @advi3++: Reset message after G4 (otherwise, stay on screen)
+  #endif
 }
 
 #if ENABLED(BEZIER_CURVE_SUPPORT)
@@ -3915,41 +4180,87 @@ inline void gcode_G4() {
       SERIAL_ECHOLNPGM("NONE");
     #endif
 
-    #if HAS_BED_PROBE
-      SERIAL_ECHOPAIR("Probe Offset X:", X_PROBE_OFFSET_FROM_EXTRUDER);
-      SERIAL_ECHOPAIR(" Y:", Y_PROBE_OFFSET_FROM_EXTRUDER);
-      SERIAL_ECHOPAIR(" Z:", zprobe_zoffset);
-      #if X_PROBE_OFFSET_FROM_EXTRUDER > 0
-        SERIAL_ECHOPGM(" (Right");
-      #elif X_PROBE_OFFSET_FROM_EXTRUDER < 0
-        SERIAL_ECHOPGM(" (Left");
-      #elif Y_PROBE_OFFSET_FROM_EXTRUDER != 0
-        SERIAL_ECHOPGM(" (Middle");
-      #else
-        SERIAL_ECHOPGM(" (Aligned With");
+    #if ENABLED(WANHAO_I3_PLUS)
+        #if HAS_BED_PROBE
+        // @advi3++
+        SERIAL_ECHOPAIR("Probe Offset X:", advi3pp::ADVi3pp::x_probe_offset_from_extruder());
+        SERIAL_ECHOPAIR(" Y:", advi3pp::ADVi3pp::y_probe_offset_from_extruder());
+        SERIAL_ECHOPAIR(" Z:", zprobe_zoffset);
+        if(advi3pp::ADVi3pp::x_probe_offset_from_extruder() > 0)
+          SERIAL_ECHOPGM(" (Right");
+        else if(advi3pp::ADVi3pp::x_probe_offset_from_extruder() < 0)
+          SERIAL_ECHOPGM(" (Left");
+        else if(advi3pp::ADVi3pp::y_probe_offset_from_extruder() != 0)
+          SERIAL_ECHOPGM(" (Middle");
+        else
+          SERIAL_ECHOPGM(" (Aligned With");
+
+        if(advi3pp::ADVi3pp::y_probe_offset_from_extruder() > 0)
+        {
+          #if IS_SCARA
+            SERIAL_ECHOPGM("-Distal");
+          #else
+            SERIAL_ECHOPGM("-Back");
+          #endif
+        }
+        else if(advi3pp::ADVi3pp::y_probe_offset_from_extruder() < 0)
+        {
+          #if IS_SCARA
+            SERIAL_ECHOPGM("-Proximal");
+          #else
+            SERIAL_ECHOPGM("-Front");
+          #endif
+        }
+        else if(advi3pp::ADVi3pp::x_probe_offset_from_extruder() != 0)
+          SERIAL_ECHOPGM("-Center");
+
+        if (zprobe_zoffset < 0)
+          SERIAL_ECHOPGM(" & Below");
+        else if (zprobe_zoffset > 0)
+          SERIAL_ECHOPGM(" & Above");
+        else
+          SERIAL_ECHOPGM(" & Same Z as");
+        SERIAL_ECHOLNPGM(" Nozzle)");
       #endif
-      #if Y_PROBE_OFFSET_FROM_EXTRUDER > 0
-        #if IS_SCARA
-          SERIAL_ECHOPGM("-Distal");
+
+
+    #else
+      #if HAS_BED_PROBE
+        SERIAL_ECHOPAIR("Probe Offset X:", X_PROBE_OFFSET_FROM_EXTRUDER);
+        SERIAL_ECHOPAIR(" Y:", Y_PROBE_OFFSET_FROM_EXTRUDER);
+        SERIAL_ECHOPAIR(" Z:", zprobe_zoffset);
+        #if X_PROBE_OFFSET_FROM_EXTRUDER > 0
+          SERIAL_ECHOPGM(" (Right");
+        #elif X_PROBE_OFFSET_FROM_EXTRUDER < 0
+          SERIAL_ECHOPGM(" (Left");
+        #elif Y_PROBE_OFFSET_FROM_EXTRUDER != 0
+          SERIAL_ECHOPGM(" (Middle");
         #else
-          SERIAL_ECHOPGM("-Back");
+          SERIAL_ECHOPGM(" (Aligned With");
         #endif
-      #elif Y_PROBE_OFFSET_FROM_EXTRUDER < 0
-        #if IS_SCARA
-          SERIAL_ECHOPGM("-Proximal");
-        #else
-          SERIAL_ECHOPGM("-Front");
+        #if Y_PROBE_OFFSET_FROM_EXTRUDER > 0
+          #if IS_SCARA
+            SERIAL_ECHOPGM("-Distal");
+          #else
+            SERIAL_ECHOPGM("-Back");
+          #endif
+        #elif Y_PROBE_OFFSET_FROM_EXTRUDER < 0
+          #if IS_SCARA
+            SERIAL_ECHOPGM("-Proximal");
+          #else
+            SERIAL_ECHOPGM("-Front");
+          #endif
+        #elif X_PROBE_OFFSET_FROM_EXTRUDER != 0
+          SERIAL_ECHOPGM("-Center");
         #endif
-      #elif X_PROBE_OFFSET_FROM_EXTRUDER != 0
-        SERIAL_ECHOPGM("-Center");
+        if (zprobe_zoffset < 0)
+          SERIAL_ECHOPGM(" & Below");
+        else if (zprobe_zoffset > 0)
+          SERIAL_ECHOPGM(" & Above");
+        else
+          SERIAL_ECHOPGM(" & Same Z as");
+        SERIAL_ECHOLNPGM(" Nozzle)");
       #endif
-      if (zprobe_zoffset < 0)
-        SERIAL_ECHOPGM(" & Below");
-      else if (zprobe_zoffset > 0)
-        SERIAL_ECHOPGM(" & Above");
-      else
-        SERIAL_ECHOPGM(" & Same Z as");
-      SERIAL_ECHOLNPGM(" Nozzle)");
     #endif
 
     #if HAS_ABL
@@ -4067,7 +4378,11 @@ inline void gcode_G4() {
     #endif
 
     // Move all carriages together linearly until an endstop is hit.
-    current_position[X_AXIS] = current_position[Y_AXIS] = current_position[Z_AXIS] = (delta_height + 10);
+    current_position[X_AXIS] = current_position[Y_AXIS] = current_position[Z_AXIS] = (delta_height + 10
+      #if HAS_BED_PROBE
+        - zprobe_zoffset
+      #endif
+    );
     feedrate_mm_s = homing_feedrate(X_AXIS);
     buffer_line_to_current_position();
     planner.synchronize();
@@ -4143,8 +4458,14 @@ inline void gcode_G4() {
     destination[Z_AXIS] = current_position[Z_AXIS]; // Z is already at the right height
 
     #if HOMING_Z_WITH_PROBE
-      destination[X_AXIS] -= X_PROBE_OFFSET_FROM_EXTRUDER;
-      destination[Y_AXIS] -= Y_PROBE_OFFSET_FROM_EXTRUDER;
+      #if ENABLED(WANHAO_I3_PLUS)
+        // @advi3++
+        destination[X_AXIS] -= advi3pp::ADVi3pp::x_probe_offset_from_extruder();
+        destination[Y_AXIS] -= advi3pp::ADVi3pp::y_probe_offset_from_extruder();      
+      #else
+        destination[X_AXIS] -= X_PROBE_OFFSET_FROM_EXTRUDER;
+        destination[Y_AXIS] -= Y_PROBE_OFFSET_FROM_EXTRUDER;
+      #endif
     #endif
 
     if (position_is_reachable(destination[X_AXIS], destination[Y_AXIS])) {
@@ -4257,7 +4578,7 @@ inline void gcode_G28(const bool always_home_all) {
 
   #if ENABLED(BLTOUCH)
     // Make sure any BLTouch error condition is cleared
-    bltouch_command(BLTOUCH_RESET);
+    bltouch_command(BLTOUCH_RESET, BLTOUCH_RESET_DELAY);
     set_bltouch_deployed(false);
   #endif
 
@@ -4979,10 +5300,18 @@ void home_all_axes() { gcode_G28(true); }
 
         xy_probe_feedrate_mm_s = MMM_TO_MMS(parser.linearval('S', XY_PROBE_SPEED));
 
-        left_probe_bed_position  = parser.seenval('L') ? int(RAW_X_POSITION(parser.value_linear_units())) : LEFT_PROBE_BED_POSITION;
-        right_probe_bed_position = parser.seenval('R') ? int(RAW_X_POSITION(parser.value_linear_units())) : RIGHT_PROBE_BED_POSITION;
-        front_probe_bed_position = parser.seenval('F') ? int(RAW_Y_POSITION(parser.value_linear_units())) : FRONT_PROBE_BED_POSITION;
-        back_probe_bed_position  = parser.seenval('B') ? int(RAW_Y_POSITION(parser.value_linear_units())) : BACK_PROBE_BED_POSITION;
+        #if ENABLED(WANHAO_I3_PLUS)
+          // @advi3++: Get the default values from ADVi3++ since the probe support is selectable at runtime
+          left_probe_bed_position  = parser.seenval('L') ? int(RAW_X_POSITION(parser.value_linear_units())) : advi3pp::ADVi3pp::left_probe_bed_position();
+          right_probe_bed_position = parser.seenval('R') ? int(RAW_X_POSITION(parser.value_linear_units())) : advi3pp::ADVi3pp::right_probe_bed_position();
+          front_probe_bed_position = parser.seenval('F') ? int(RAW_Y_POSITION(parser.value_linear_units())) : advi3pp::ADVi3pp::front_probe_bed_position();
+          back_probe_bed_position  = parser.seenval('B') ? int(RAW_Y_POSITION(parser.value_linear_units())) : advi3pp::ADVi3pp::back_probe_bed_position();
+        #else
+          left_probe_bed_position  = parser.seenval('L') ? int(RAW_X_POSITION(parser.value_linear_units())) : LEFT_PROBE_BED_POSITION;
+          right_probe_bed_position = parser.seenval('R') ? int(RAW_X_POSITION(parser.value_linear_units())) : RIGHT_PROBE_BED_POSITION;
+          front_probe_bed_position = parser.seenval('F') ? int(RAW_Y_POSITION(parser.value_linear_units())) : FRONT_PROBE_BED_POSITION;
+          back_probe_bed_position  = parser.seenval('B') ? int(RAW_Y_POSITION(parser.value_linear_units())) : BACK_PROBE_BED_POSITION;
+        #endif
 
         if (
           #if IS_SCARA || ENABLED(DELTA)
@@ -5254,6 +5583,12 @@ void home_all_axes() { gcode_G28(true); }
 
         measured_z = 0;
 
+        #if ENABLED(WANHAO_I3_PLUS)
+          // @advi3++: Display on the LCD panel the indexes of the measures
+          const int nb_measures = PR_OUTER_END * PR_INNER_END;
+          int measure_index = 0;
+        #endif
+
         // Outer loop is Y with PROBE_Y_FIRST disabled
         for (uint8_t PR_OUTER_VAR = 0; PR_OUTER_VAR < PR_OUTER_END && !isnan(measured_z); PR_OUTER_VAR++) {
 
@@ -5290,6 +5625,13 @@ void home_all_axes() { gcode_G28(true); }
               if (!position_is_reachable_by_probe(xProbe, yProbe)) continue;
             #endif
 
+            #if ENABLED(WANHAO_I3_PLUS)
+              // @advi3++: Display on the LCD panel the indexes of the measures
+              lcd_status_printf_P(0, PSTR("Measure %i/%i @ (%i, %i) mm"),
+                                  ++measure_index, nb_measures,
+                                  static_cast<int>(xProbe), static_cast<int>(yProbe));
+            #endif
+            
             measured_z = faux ? 0.001 * random(-100, 101) : probe_pt(xProbe, yProbe, raise_after, verbose_level);
 
             if (isnan(measured_z)) {
@@ -5594,6 +5936,10 @@ void home_all_axes() { gcode_G28(true); }
     #endif
 
     report_current_position();
+    #if ENABLED(WANHAO_I3_PLUS)
+      // @advi3++
+      advi3pp::ADVi3pp::g29_leveling_finished(!isnan(measured_z));
+    #endif
   }
 
 #endif // OLDSCHOOL_ABL
@@ -5610,8 +5956,14 @@ void home_all_axes() { gcode_G28(true); }
    *   E   Engage the probe for each probe (default 1)
    */
   inline void gcode_G30() {
-    const float xpos = parser.linearval('X', current_position[X_AXIS] + X_PROBE_OFFSET_FROM_EXTRUDER),
-                ypos = parser.linearval('Y', current_position[Y_AXIS] + Y_PROBE_OFFSET_FROM_EXTRUDER);
+    #if ENABLED(WANHAO_I3_PLUS)
+      // @advi3++
+      const float xpos = parser.linearval('X', current_position[X_AXIS] + advi3pp::ADVi3pp::x_probe_offset_from_extruder()),
+                  ypos = parser.linearval('Y', current_position[Y_AXIS] + advi3pp::ADVi3pp::y_probe_offset_from_extruder());
+    #else
+      const float xpos = parser.linearval('X', current_position[X_AXIS] + X_PROBE_OFFSET_FROM_EXTRUDER),
+                  ypos = parser.linearval('Y', current_position[Y_AXIS] + Y_PROBE_OFFSET_FROM_EXTRUDER);
+    #endif
 
     if (!position_is_reachable_by_probe(xpos, ypos)) return;
 
@@ -5755,12 +6107,6 @@ void home_all_axes() { gcode_G28(true); }
     if ((!end_stops && tower_angles) || (end_stops && !tower_angles)) { // XOR
       SERIAL_PROTOCOLPAIR("  Radius:", delta_radius);
     }
-    #if HAS_BED_PROBE
-      if (!end_stops && !tower_angles) {
-        SERIAL_PROTOCOL_SP(30);
-        print_signed_float(PSTR("Offset"), zprobe_zoffset);
-      }
-    #endif
     SERIAL_EOL();
   }
 
@@ -5809,30 +6155,19 @@ void home_all_axes() { gcode_G28(true); }
   /**
    *  - Probe a point
    */
-  static float calibration_probe(const float &nx, const float &ny, const bool stow, const bool set_up) {
+  static float calibration_probe(const float &nx, const float &ny, const bool stow) {
     #if HAS_BED_PROBE
-      return probe_pt(nx, ny, set_up ? PROBE_PT_BIG_RAISE : stow ? PROBE_PT_STOW : PROBE_PT_RAISE, 0, false);
+      return probe_pt(nx, ny, stow ? PROBE_PT_STOW : PROBE_PT_RAISE, 0, false);
     #else
       UNUSED(stow);
-      UNUSED(set_up);
       return lcd_probe_pt(nx, ny);
     #endif
   }
 
-  #if HAS_BED_PROBE && ENABLED(ULTIPANEL)
-    static float probe_z_shift(const float center) {
-      STOW_PROBE();
-      endstops.enable_z_probe(false);
-      float z_shift = lcd_probe_pt(0, 0) - center;
-      endstops.enable_z_probe(true);
-      return z_shift;
-    }
-  #endif
-
   /**
    *  - Probe a grid
    */
-  static bool probe_calibration_points(float z_pt[NPP + 1], const int8_t probe_points, const bool towers_set, const bool stow_after_each, const bool set_up) {
+  static bool probe_calibration_points(float z_pt[NPP + 1], const int8_t probe_points, const bool towers_set, const bool stow_after_each) {
     const bool _0p_calibration      = probe_points == 0,
                _1p_calibration      = probe_points == 1 || probe_points == -1,
                _4p_calibration      = probe_points == 2,
@@ -5855,7 +6190,7 @@ void home_all_axes() { gcode_G28(true); }
     if (!_0p_calibration) {
 
       if (!_7p_no_intermediates && !_7p_4_intermediates && !_7p_11_intermediates) { // probe the center
-        z_pt[CEN] += calibration_probe(0, 0, stow_after_each, set_up);
+        z_pt[CEN] += calibration_probe(0, 0, stow_after_each);
         if (isnan(z_pt[CEN])) return false;
       }
 
@@ -5865,7 +6200,7 @@ void home_all_axes() { gcode_G28(true); }
         I_LOOP_CAL_PT(rad, start, steps) {
           const float a = RADIANS(210 + (360 / NPP) *  (rad - 1)),
                       r = delta_calibration_radius * 0.1;
-          z_pt[CEN] += calibration_probe(cos(a) * r, sin(a) * r, stow_after_each, set_up);
+          z_pt[CEN] += calibration_probe(cos(a) * r, sin(a) * r, stow_after_each);
           if (isnan(z_pt[CEN])) return false;
        }
         z_pt[CEN] /= float(_7p_2_intermediates ? 7 : probe_points);
@@ -5889,7 +6224,7 @@ void home_all_axes() { gcode_G28(true); }
             const float a = RADIANS(210 + (360 / NPP) *  (rad - 1)),
                         r = delta_calibration_radius * (1 - 0.1 * (zig_zag ? offset - circle : circle)),
                         interpol = fmod(rad, 1);
-            const float z_temp = calibration_probe(cos(a) * r, sin(a) * r, stow_after_each, set_up);
+            const float z_temp = calibration_probe(cos(a) * r, sin(a) * r, stow_after_each);
             if (isnan(z_temp)) return false;
             // split probe point to neighbouring calibration points
             z_pt[uint8_t(LROUND(rad - interpol + NPP - 1)) % NPP + 1] += z_temp * sq(cos(RADIANS(interpol * 90)));
@@ -6018,10 +6353,7 @@ void home_all_axes() { gcode_G28(true); }
    *
    * Parameters:
    *
-   *   S   Setup mode; disables probe protection
-   *
    *   Pn  Number of probe points:
-   *      P-1      Checks the z_offset with a center probe and paper test.
    *      P0       Normalizes calibration.
    *      P1       Calibrates height only with center probe.
    *      P2       Probe center and towers. Calibrate height, endstops and delta radius.
@@ -6044,22 +6376,15 @@ void home_all_axes() { gcode_G28(true); }
    */
   inline void gcode_G33() {
 
-    const bool set_up =
-      #if HAS_BED_PROBE
-        parser.seen('S');
-      #else
-        false;
-      #endif
-
-    const int8_t probe_points = set_up ? 2 : parser.intval('P', DELTA_CALIBRATION_DEFAULT_POINTS);
-    if (!WITHIN(probe_points, -1, 10)) {
-      SERIAL_PROTOCOLLNPGM("?(P)oints is implausible (-1 - 10).");
+    const int8_t probe_points = parser.intval('P', DELTA_CALIBRATION_DEFAULT_POINTS);
+    if (!WITHIN(probe_points, 0, 10)) {
+      SERIAL_PROTOCOLLNPGM("?(P)oints is implausible (0-10).");
       return;
     }
 
     const bool towers_set = !parser.seen('T');
 
-    const float calibration_precision = set_up ? Z_CLEARANCE_BETWEEN_PROBES / 5.0 : parser.floatval('C', 0.0);
+    const float calibration_precision = parser.floatval('C', 0.0);
     if (calibration_precision < 0) {
       SERIAL_PROTOCOLLNPGM("?(C)alibration precision is implausible (>=0).");
       return;
@@ -6067,25 +6392,17 @@ void home_all_axes() { gcode_G28(true); }
 
     const int8_t force_iterations = parser.intval('F', 0);
     if (!WITHIN(force_iterations, 0, 30)) {
-      SERIAL_PROTOCOLLNPGM("?(F)orce iteration is implausible (0 - 30).");
+      SERIAL_PROTOCOLLNPGM("?(F)orce iteration is implausible (0-30).");
       return;
     }
 
     const int8_t verbose_level = parser.byteval('V', 1);
     if (!WITHIN(verbose_level, 0, 3)) {
-      SERIAL_PROTOCOLLNPGM("?(V)erbose level is implausible (0 - 3).");
+      SERIAL_PROTOCOLLNPGM("?(V)erbose level is implausible (0-3).");
       return;
     }
 
     const bool stow_after_each = parser.seen('E');
-
-    if (set_up) {
-      delta_height = 999.99;
-      delta_radius = DELTA_PRINTABLE_RADIUS;
-      ZERO(delta_endstop_adj);
-      ZERO(delta_tower_angle_trim);
-      recalc_delta_settings();
-    }
 
     const bool _0p_calibration      = probe_points == 0,
                _1p_calibration      = probe_points == 1 || probe_points == -1,
@@ -6135,7 +6452,6 @@ void home_all_axes() { gcode_G28(true); }
     const char *checkingac = PSTR("Checking... AC");
     serialprintPGM(checkingac);
     if (verbose_level == 0) SERIAL_PROTOCOLPGM(" (DRY-RUN)");
-    if (set_up) SERIAL_PROTOCOLPGM("  (SET-UP)");
     SERIAL_EOL();
     lcd_setstatusPGM(checkingac);
 
@@ -6154,7 +6470,7 @@ void home_all_axes() { gcode_G28(true); }
 
       // Probe the points
       zero_std_dev_old = zero_std_dev;
-      if (!probe_calibration_points(z_at_pt, probe_points, towers_set, stow_after_each, set_up)) {
+      if (!probe_calibration_points(z_at_pt, probe_points, towers_set, stow_after_each)) {
         SERIAL_PROTOCOLLNPGM("Correct delta settings with M665 and M666");
         return AC_CLEANUP();
       }
@@ -6202,11 +6518,6 @@ void home_all_axes() { gcode_G28(true); }
         delta_calibration_radius = cr_old;
 
         switch (probe_points) {
-          case -1:
-            #if HAS_BED_PROBE && ENABLED(ULTIPANEL)
-              zprobe_zoffset += probe_z_shift(z_at_pt[CEN]);
-            #endif
-
           case 0:
             test_precision = 0.00; // forced end
             break;
@@ -6460,8 +6771,14 @@ void home_all_axes() { gcode_G28(true); }
       if (hasI) destination[X_AXIS] = _GET_MESH_X(ix);
       if (hasJ) destination[Y_AXIS] = _GET_MESH_Y(iy);
       if (parser.boolval('P')) {
-        if (hasI) destination[X_AXIS] -= X_PROBE_OFFSET_FROM_EXTRUDER;
-        if (hasJ) destination[Y_AXIS] -= Y_PROBE_OFFSET_FROM_EXTRUDER;
+        #if ENABLED(WANHAO_I3_PLUS)
+          // @advi3++
+          if (hasI) destination[X_AXIS] -= advi3pp::ADVi3pp::x_probe_offset_from_extruder();
+          if (hasJ) destination[Y_AXIS] -= advi3pp::ADVi3pp::y_probe_offset_from_extruder();
+        #else
+          if (hasI) destination[X_AXIS] -= X_PROBE_OFFSET_FROM_EXTRUDER;
+          if (hasJ) destination[Y_AXIS] -= Y_PROBE_OFFSET_FROM_EXTRUDER;
+        #endif
       }
 
       const float fval = parser.linearval('F');
@@ -6755,7 +7072,8 @@ void report_xyz_from_stepper_position() {
 
     planner.synchronize();
 
-    #if ENABLED(ULTIPANEL)
+    // @advi3++: ADVi3++ is like a ULTIPANEL
+    #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
 
       if (has_message)
         lcd_setstatus(args, true);
@@ -6765,6 +7083,10 @@ void report_xyz_from_stepper_position() {
           dontExpireStatus();
         #endif
       }
+
+      #if ENABLED(WANHAO_I3_PLUS)
+        advi3pp::ADVi3pp::stop_and_wait(); // @advi3++: Display Wait screen
+      #endif
 
     #else
 
@@ -6962,7 +7284,12 @@ inline void gcode_M17() {
    *
    * Returns 'true' if heating was completed, 'false' for abort
    */
-  static bool ensure_safe_temperature(const AdvancedPauseMode mode=ADVANCED_PAUSE_MODE_PAUSE_PRINT) {
+  #if ENABLED(WANHAO_I3_PLUS)
+    // @advi3++: Remove static since we need to call it from ADVi3++
+    bool ensure_safe_temperature(const AdvancedPauseMode mode=ADVANCED_PAUSE_MODE_PAUSE_PRINT) {    
+  #else
+    static bool ensure_safe_temperature(const AdvancedPauseMode mode=ADVANCED_PAUSE_MODE_PAUSE_PRINT) {
+  #endif
 
     #if ENABLED(PREVENT_COLD_EXTRUSION)
       if (!DEBUGGING(DRYRUN) && thermalManager.targetTooColdToExtrude(active_extruder)) {
@@ -6972,7 +7299,8 @@ inline void gcode_M17() {
       }
     #endif
 
-    #if ENABLED(ULTIPANEL)
+    // @advi3++: ADVi3++ is like a ULTIPANEL
+    #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
       lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_WAIT_FOR_NOZZLES_TO_HEAT, mode);
     #else
       UNUSED(mode);
@@ -7002,12 +7330,14 @@ inline void gcode_M17() {
                             const bool show_lcd=false, const bool pause_for_user=false,
                             const AdvancedPauseMode mode=ADVANCED_PAUSE_MODE_PAUSE_PRINT
   ) {
-    #if DISABLED(ULTIPANEL)
+    // @advi3++: ADVi3++ is like a ULTIPANEL
+    #if DISABLED(ULTIPANEL) && DISABLED(I3PLUS_LCD)
       UNUSED(show_lcd);
     #endif
 
     if (!ensure_safe_temperature(mode)) {
-      #if ENABLED(ULTIPANEL)
+      // @advi3++: ADVi3++ is like a ULTIPANEL
+      #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
         if (show_lcd) // Show status screen
           lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_STATUS);
       #endif
@@ -7016,7 +7346,8 @@ inline void gcode_M17() {
     }
 
     if (pause_for_user) {
-      #if ENABLED(ULTIPANEL)
+      // @advi3++: ADVi3++ is like a ULTIPANEL
+      #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
         if (show_lcd) // Show "insert filament"
           lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_INSERT, mode);
       #endif
@@ -7040,7 +7371,8 @@ inline void gcode_M17() {
       KEEPALIVE_STATE(IN_HANDLER);
     }
 
-    #if ENABLED(ULTIPANEL)
+    // @advi3++: ADVi3++ is like a ULTIPANEL
+    #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
       if (show_lcd) // Show "wait for load" message
         lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_LOAD, mode);
     #endif
@@ -7064,7 +7396,8 @@ inline void gcode_M17() {
 
     #if ENABLED(ADVANCED_PAUSE_CONTINUOUS_PURGE)
 
-      #if ENABLED(ULTIPANEL)
+      // @advi3++: ADVi3++ is like a ULTIPANEL
+      #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
         if (show_lcd)
           lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_CONTINUOUS_PURGE);
       #endif
@@ -7079,7 +7412,8 @@ inline void gcode_M17() {
       do {
         if (purge_length > 0) {
           // "Wait for filament purge"
-          #if ENABLED(ULTIPANEL)
+          // @advi3++: ADVi3++ is like a ULTIPANEL
+          #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
             if (show_lcd)
               lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_PURGE, mode);
           #endif
@@ -7089,7 +7423,8 @@ inline void gcode_M17() {
         }
 
         // Show "Purge More" / "Resume" menu and wait for reply
-        #if ENABLED(ULTIPANEL)
+        // @advi3++: ADVi3++ is like a ULTIPANEL
+        #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
           if (show_lcd) {
             KEEPALIVE_STATE(PAUSED_FOR_USER);
             wait_for_user = false;
@@ -7101,7 +7436,8 @@ inline void gcode_M17() {
 
         // Keep looping if "Purge More" was selected
       } while (
-        #if ENABLED(ULTIPANEL)
+        // @advi3++: ADVi3++ is like a ULTIPANEL
+        #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
           show_lcd && advanced_pause_menu_response == ADVANCED_PAUSE_RESPONSE_EXTRUDE_MORE
         #else
           0
@@ -7127,7 +7463,8 @@ inline void gcode_M17() {
                               const AdvancedPauseMode mode=ADVANCED_PAUSE_MODE_PAUSE_PRINT
   ) {
     if (!ensure_safe_temperature(mode)) {
-      #if ENABLED(ULTIPANEL)
+      // @advi3++: ADVi3++ is like a ULTIPANEL
+      #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
         if (show_lcd) // Show status screen
           lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_STATUS);
       #endif
@@ -7135,7 +7472,8 @@ inline void gcode_M17() {
       return false;
     }
 
-    #if DISABLED(ULTIPANEL)
+    // @advi3++: ADVi3++ is like a ULTIPANEL
+    #if DISABLED(ULTIPANEL) && DISABLED(I3PLUS_LCD)
       UNUSED(show_lcd);
     #else
       if (show_lcd)
@@ -7185,7 +7523,13 @@ inline void gcode_M17() {
    *
    * Returns 'true' if pause was completed, 'false' for abort
    */
-  static bool pause_print(const float &retract, const point_t &park_point, const float &unload_length=0, const bool show_lcd=false) {
+  #if ENABLED(WANHAO_I3_PLUS)
+    // @advi3++: Remove static since we need to call it from ADVi3++
+    bool pause_print(const float &retract, const point_t &park_point, const float &unload_length=0, const bool show_lcd=false) {
+  #else
+    static bool pause_print(const float &retract, const point_t &park_point, const float &unload_length=0, const bool show_lcd=false) {
+  #endif
+
     if (did_pause_print) return false; // already paused
 
     #ifdef ACTION_ON_PAUSE
@@ -7196,7 +7540,8 @@ inline void gcode_M17() {
       SERIAL_ERROR_START();
       SERIAL_ERRORLNPGM(MSG_HOTEND_TOO_COLD);
 
-      #if ENABLED(ULTIPANEL)
+      // @advi3++: ADVi3++ is like a ULTIPANEL
+      #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
         if (show_lcd) // Show status screen
           lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_STATUS);
         LCD_MESSAGEPGM(MSG_M600_TOO_COLD);
@@ -7248,7 +7593,8 @@ inline void gcode_M17() {
   static void wait_for_filament_reload(const int8_t max_beep_count=0) {
     bool nozzle_timed_out = false;
 
-    #if ENABLED(ULTIPANEL)
+    // @advi3++: ADVi3++ is like a ULTIPANEL
+    #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
       lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_INSERT);
     #endif
     SERIAL_ECHO_START();
@@ -7279,11 +7625,13 @@ inline void gcode_M17() {
           nozzle_timed_out |= thermalManager.is_heater_idle(e);
 
       if (nozzle_timed_out) {
-        #if ENABLED(ULTIPANEL)
+        // @advi3++: ADVi3++ is like a ULTIPANEL
+        #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
           lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_CLICK_TO_HEAT_NOZZLE);
         #endif
         SERIAL_ECHO_START();
-        #if ENABLED(ULTIPANEL) && ENABLED(EMERGENCY_PARSER)
+        // @advi3++: ADVi3++ behave like a ULTIPANEL
+        #if (ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)) && ENABLED(EMERGENCY_PARSER)
           SERIAL_ERRORLNPGM(MSG_FILAMENT_CHANGE_HEAT);
         #elif ENABLED(EMERGENCY_PARSER)
           SERIAL_ERRORLNPGM(MSG_FILAMENT_CHANGE_HEAT_M108);
@@ -7300,11 +7648,13 @@ inline void gcode_M17() {
         // Wait for the heaters to reach the target temperatures
         ensure_safe_temperature();
 
-        #if ENABLED(ULTIPANEL)
+        // @advi3++: ADVi3++ behave like a ULTIPANEL
+        #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
           lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_INSERT);
         #endif
         SERIAL_ECHO_START();
-        #if ENABLED(ULTIPANEL) && ENABLED(EMERGENCY_PARSER)
+        // @advi3++: ADVi3++ behave like a ULTIPANEL
+        #if (ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)) && ENABLED(EMERGENCY_PARSER)
           SERIAL_ERRORLNPGM(MSG_FILAMENT_CHANGE_INSERT);
         #elif ENABLED(EMERGENCY_PARSER)
           SERIAL_ERRORLNPGM(MSG_FILAMENT_CHANGE_INSERT_M108);
@@ -7349,7 +7699,12 @@ inline void gcode_M17() {
    * - Send host action for resume, if configured
    * - Resume the current SD print job, if any
    */
-  static void resume_print(const float &slow_load_length=0, const float &fast_load_length=0, const float &purge_length=ADVANCED_PAUSE_PURGE_LENGTH, const int8_t max_beep_count=0) {
+  #if ENABLED(WANHAO_I3_PLUS)
+    // @advi3++: Remove static since we need to call it from ADVi3++
+    void resume_print(const float &slow_load_length=0, const float &fast_load_length=0, const float &purge_length=ADVANCED_PAUSE_PURGE_LENGTH, const int8_t max_beep_count=0) {
+  #else  
+    static void resume_print(const float &slow_load_length=0, const float &fast_load_length=0, const float &purge_length=ADVANCED_PAUSE_PURGE_LENGTH, const int8_t max_beep_count=0) {
+  #endif    
     if (!did_pause_print) return;
 
     // Re-enable the heaters if they timed out
@@ -7364,7 +7719,8 @@ inline void gcode_M17() {
       load_filament(slow_load_length, fast_load_length, purge_length, max_beep_count, true, nozzle_timed_out);
     }
 
-    #if ENABLED(ULTIPANEL)
+    // @advi3++: ADVi3++ behave like a ULTIPANEL
+    #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
       // "Wait for print to resume"
       lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_RESUME);
     #endif
@@ -7393,7 +7749,8 @@ inline void gcode_M17() {
       runout.reset();
     #endif
 
-    #if ENABLED(ULTIPANEL)
+    // @advi3++: ADVi3++ behave like a ULTIPANEL
+    #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
       // Show status screen
       lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_STATUS);
     #endif
@@ -7981,10 +8338,10 @@ inline void gcode_M42() {
 
     const int8_t verbose_level = parser.byteval('V', 1);
     #if DISABLED(SLIM_1284P)
-      if (!WITHIN(verbose_level, 0, 4)) {
-      SERIAL_PROTOCOLLNPGM("?(V)erbose level error (0-4).");
-      return;
-      }
+        if (!WITHIN(verbose_level, 0, 4)) {
+          SERIAL_PROTOCOLLNPGM("?(V)erbose level is implausible (0-4).");
+          return;
+        }
     #endif
 
     if (verbose_level > 0)
@@ -7994,8 +8351,8 @@ inline void gcode_M42() {
     const int8_t n_samples = parser.byteval('P', 10);
     #if DISABLED(SLIM_1284P)
       if (!WITHIN(n_samples, 4, 50)) {
-      SERIAL_PROTOCOLLNPGM("?Sample size not plausible (4-50).");
-      return;
+      	SERIAL_PROTOCOLLNPGM("?Sample size not plausible (4-50).");
+      	return;
       }
     #endif
 
@@ -8004,13 +8361,32 @@ inline void gcode_M42() {
     float X_current = current_position[X_AXIS],
           Y_current = current_position[Y_AXIS];
 
-    const float X_probe_location = parser.linearval('X', X_current + X_PROBE_OFFSET_FROM_EXTRUDER),
-                Y_probe_location = parser.linearval('Y', Y_current + Y_PROBE_OFFSET_FROM_EXTRUDER);
+    #if ENABLED(WANHAO_I3_PLUS)
+      // @advi3++
+      const float X_probe_location = parser.linearval('X', X_current + advi3pp::ADVi3pp::x_probe_offset_from_extruder()),
+                  Y_probe_location = parser.linearval('Y', Y_current + advi3pp::ADVi3pp::y_probe_offset_from_extruder());
+    #else
+      const float X_probe_location = parser.linearval('X', X_current + X_PROBE_OFFSET_FROM_EXTRUDER),
+                  Y_probe_location = parser.linearval('Y', Y_current + Y_PROBE_OFFSET_FROM_EXTRUDER);
+    #endif
 
     if (!position_is_reachable_by_probe(X_probe_location, Y_probe_location)) {
       SERIAL_PROTOCOLLNPGM("? (X,Y) out of bounds.");
       return;
     }
+
+    #if ENABLED(WANHAO_I3_PLUS)
+      bool seen_L = parser.seen('L');
+      uint8_t n_legs = seen_L ? parser.value_byte() : 0;
+      if (n_legs > 15) {
+        SERIAL_PROTOCOLLNPGM("?Number of legs in movement not plausible (0-15).");
+        return;
+      }
+      if (n_legs == 1) n_legs = 2;
+
+      const bool schizoid_flag = parser.boolval('S');
+      if (schizoid_flag && !seen_L) n_legs = 7;
+    #endif
 
     /**
      * Now get everything to the specified probe point So we can safely do a
@@ -8119,7 +8495,7 @@ inline void gcode_M42() {
       SERIAL_EOL();
       SERIAL_EOL();
 
-      #if ENABLED(ULTRA_LCD)
+      #if ENABLED(ULTRA_LCD) || ENABLED(WANHAO_I3_PLUS)
         char sigma_str[8];
         dtostrf(sigma, 2, 6, sigma_str);
         lcd_status_printf_P(0, PSTR("M48 Result: %s"), sigma_str);
@@ -8152,7 +8528,8 @@ inline void gcode_M42() {
 
 #endif // G26_MESH_VALIDATION
 
-#if ENABLED(ULTRA_LCD) && ENABLED(LCD_SET_PROGRESS_MANUALLY)
+// @advi3++: Enable M73
+#if (ENABLED(ULTRA_LCD) || ENABLED(I3PLUS_LCD)) && ENABLED(LCD_SET_PROGRESS_MANUALLY)
   /**
    * M73: Set percentage complete (for display on LCD)
    *
@@ -8393,7 +8770,12 @@ inline void gcode_M109() {
         #if HOTENDS > 1
           lcd_status_printf_P(0, heating ? PSTR("E%i " MSG_HEATING) : PSTR("E%i " MSG_COOLING), target_extruder + 1);
         #else
-          lcd_setstatusPGM(heating ? PSTR("E " MSG_HEATING) : PSTR("E " MSG_COOLING));
+          #if ENABLED(WANHAO_I3_PLUS)
+            // @advi3++: Displays explicitly "Extruder" instead of just "E"
+            lcd_setstatusPGM(heating ? PSTR("Extruder " MSG_HEATING) : PSTR("Extruder " MSG_COOLING));
+          #else
+            lcd_setstatusPGM(heating ? PSTR("E " MSG_HEATING) : PSTR("E " MSG_COOLING));
+          #endif
         #endif
     #endif
   }
@@ -8799,7 +9181,7 @@ inline void gcode_M111() {
     }
   }
 
-#endif // ULTIPANEL
+#endif // ULTIPANEL || I3PLUS_LCD
 
 #if ENABLED(TEMPERATURE_UNITS_SUPPORT)
   /**
@@ -8842,7 +9224,8 @@ inline void gcode_M111() {
       restore_stepper_drivers();
     #endif
 
-    #if ENABLED(ULTIPANEL)
+    // @advi3++: ADVi3++ is like a ULTIPANEL
+    #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
       lcd_reset_status();
     #endif
   }
@@ -8874,7 +9257,8 @@ inline void gcode_M81() {
     PSU_OFF();
   #endif
 
-  #if ENABLED(ULTIPANEL)
+  // @advi3++: ADVi3++ is like a ULTIPANEL
+  #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
     LCD_MESSAGEPGM(MACHINE_NAME " " MSG_OFF ".");
   #endif
 }
@@ -8911,7 +9295,8 @@ inline void gcode_M18_M84() {
       #endif
     }
 
-    #if ENABLED(AUTO_BED_LEVELING_UBL) && ENABLED(ULTIPANEL)  // Only needed with an LCD
+    // @advi3++: ADVi3++ is like a ULTIPANEL
+    #if ENABLED(AUTO_BED_LEVELING_UBL) && (ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD))  // Only needed with an LCD
       if (ubl.lcd_map_control) ubl.lcd_map_control = defer_return_to_status = false;
     #endif
   }
@@ -10048,7 +10433,7 @@ inline void gcode_M226() {
         NOLESS(thermalManager.lpq_len, 0);
       #endif
 
-      thermalManager.updatePID();
+      thermalManager.update_pid();
       SERIAL_ECHO_START();
       #if ENABLED(PID_PARAMS_PER_HOTEND)
         SERIAL_ECHOPAIR(" e:", e); // specify extruder in serial output
@@ -10194,7 +10579,7 @@ inline void gcode_M303() {
       KEEPALIVE_STATE(NOT_BUSY);
     #endif
 
-    thermalManager.PID_autotune(temp, e, c, u);
+    thermalManager.pid_autotune(temp, e, c, u);
 
     #if DISABLED(BUSY_WHILE_HEATING)
       KEEPALIVE_STATE(IN_HANDLER);
@@ -10930,7 +11315,8 @@ inline void gcode_M502() {
     if (get_target_extruder_from_command(600)) return;
 
     // Show initial message
-    #if ENABLED(ULTIPANEL)
+    // @advi3++: ADVi3++ is like a ULTIPANEL
+    #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
       lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_INIT, ADVANCED_PAUSE_MODE_PAUSE_PRINT, target_extruder);
     #endif
 
@@ -10999,6 +11385,10 @@ inline void gcode_M502() {
 
     // Resume the print job timer if it was running
     if (job_running) print_job_timer.start();
+
+    #if ENABLED(WANHAO_I3_PLUS)
+      advi3pp::ADVi3pp::pause_finished(true);
+    #endif
   }
 
   /**
@@ -11125,7 +11515,8 @@ inline void gcode_M502() {
     if (parser.seenval('Z')) park_point.z = parser.linearval('Z');
 
     // Show initial "wait for load" message
-    #if ENABLED(ULTIPANEL)
+    // @advi3++: ADVi3++ is like a ULTIPANEL
+    #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
       lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_LOAD, ADVANCED_PAUSE_MODE_LOAD_FILAMENT, target_extruder);
     #endif
 
@@ -11156,7 +11547,8 @@ inline void gcode_M502() {
     #endif
 
     // Show status screen
-    #if ENABLED(ULTIPANEL)
+    // @advi3++: ADVi3++ is like a ULTIPANEL
+    #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
       lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_STATUS);
     #endif
   }
@@ -11185,7 +11577,8 @@ inline void gcode_M502() {
     if (parser.seenval('Z')) park_point.z = parser.linearval('Z');
 
     // Show initial message
-    #if ENABLED(ULTIPANEL)
+    // @advi3++: ADVi3++ is like a ULTIPANEL
+    #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
       lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_UNLOAD, ADVANCED_PAUSE_MODE_UNLOAD_FILAMENT, target_extruder);
     #endif
 
@@ -11229,7 +11622,8 @@ inline void gcode_M502() {
     #endif
 
     // Show status screen
-    #if ENABLED(ULTIPANEL)
+    // @advi3++: ADVi3++ is like a ULTIPANEL
+    #if ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD)
       lcd_advanced_pause_show_message(ADVANCED_PAUSE_MESSAGE_STATUS);
     #endif
   }
@@ -12604,6 +12998,9 @@ void process_parsed_command() {
 
   // Handle a known G, M, or T
   switch (parser.command_letter) {
+	#if ENABLED(WANHAO_I3_PLUS)
+      case 'A': advi3pp::ADVi3pp::process_command(parser); break; // @advi3++: Put back ADVi3++ own command codes
+    #endif
     case 'G': switch (parser.codenum) {
 
       case 0: case 1: gcode_G0_G1(                                // G0: Fast Move, G1: Linear Move
@@ -12750,7 +13147,8 @@ void process_parsed_command() {
         case 49: gcode_M49(); break;                              // M49: Toggle the G26 Debug Flag
       #endif
 
-      #if ENABLED(ULTRA_LCD) && ENABLED(LCD_SET_PROGRESS_MANUALLY)
+      // @advi3++: Enable M73
+      #if (ENABLED(ULTRA_LCD) || ENABLED(I3PLUS_LCD)) && ENABLED(LCD_SET_PROGRESS_MANUALLY)
         case 73: gcode_M73(); break;                              // M73: Set Print Progress %
       #endif
       case 75: gcode_M75(); break;                                // M75: Start Print Job Timer
@@ -14600,7 +14998,7 @@ void prepare_move_to_destination() {
 
 #if ENABLED(TEMP_STAT_LEDS)
 
-  static bool red_led = false;
+  static uint8_t red_led = -1;  // Invalid value to force leds initializzation on startup
   static millis_t next_status_led_update_ms = 0;
 
   void handle_status_leds(void) {
@@ -14608,20 +15006,18 @@ void prepare_move_to_destination() {
       next_status_led_update_ms += 500; // Update every 0.5s
       float max_temp = 0.0;
       #if HAS_HEATED_BED
-        max_temp = MAX3(max_temp, thermalManager.degTargetBed(), thermalManager.degBed());
+        max_temp = MAX(thermalManager.degTargetBed(), thermalManager.degBed());
       #endif
       HOTEND_LOOP()
         max_temp = MAX3(max_temp, thermalManager.degHotend(e), thermalManager.degTargetHotend(e));
-      const bool new_led = (max_temp > 55.0) ? true : (max_temp < 54.0) ? false : red_led;
+      const uint8_t new_led = (max_temp > 55.0) ? HIGH : (max_temp < 54.0 || red_led == -1) ? LOW : red_led;
       if (new_led != red_led) {
         red_led = new_led;
         #if PIN_EXISTS(STAT_LED_RED)
-          WRITE(STAT_LED_RED_PIN, new_led ? HIGH : LOW);
-          #if PIN_EXISTS(STAT_LED_BLUE)
-            WRITE(STAT_LED_BLUE_PIN, new_led ? LOW : HIGH);
-          #endif
-        #else
-          WRITE(STAT_LED_BLUE_PIN, new_led ? HIGH : LOW);
+          WRITE(STAT_LED_RED_PIN, new_led);
+        #endif
+        #if PIN_EXISTS(STAT_LED_BLUE)
+          WRITE(STAT_LED_BLUE_PIN, !new_led);
         #endif
       }
     }
@@ -14726,7 +15122,8 @@ void manage_inactivity(const bool ignore_stepper_queue/*=false*/) {
       #if ENABLED(DISABLE_INACTIVE_E)
         disable_e_steppers();
       #endif
-      #if ENABLED(AUTO_BED_LEVELING_UBL) && ENABLED(ULTIPANEL)  // Only needed with an LCD
+      // @advi3++: ADVi3++ is like a ULTIPANEL
+      #if ENABLED(AUTO_BED_LEVELING_UBL) && (ENABLED(ULTIPANEL) || ENABLED(I3PLUS_LCD))  // Only needed with an LCD
         if (ubl.lcd_map_control) ubl.lcd_map_control = defer_return_to_status = false;
       #endif
     }
@@ -14894,6 +15291,11 @@ void idle(
   #endif
 
   lcd_update();
+  
+  #if ENABLED(WANHAO_I3_PLUS)
+    // @advi3++: ADVi3++ idle tasks
+    advi3pp::ADVi3pp::idle();
+  #endif
 
   host_keepalive();
 
@@ -14939,12 +15341,17 @@ void idle(
  */
 void kill(const char* lcd_msg) {
   SERIAL_ERROR_START();
+  #if ENABLED(WANHAO_I3_PLUS)
+    // @advi3++: Output the kill msg  
+    serialprintPGM(lcd_msg);
+    SERIAL_PROTOCOLPGM(": ");
+  #endif
   SERIAL_ERRORLNPGM(MSG_ERR_KILLED);
 
   thermalManager.disable_all_heaters();
   disable_all_steppers();
 
-  #if ENABLED(ULTRA_LCD)
+  #if ENABLED(ULTRA_LCD) || ENABLED(I3PLUS_LCD)
     kill_screen(lcd_msg);
   #else
     UNUSED(lcd_msg);
@@ -15039,6 +15446,11 @@ void setup() {
   SERIAL_PROTOCOLLNPGM("start");
   SERIAL_ECHO_START();
 
+  #if ENABLED(WANHAO_I3_PLUS)
+    // @advi3++: setup second serial (LCD panel)
+    advi3pp::ADVi3pp::setup_lcd_serial();
+  #endif
+
   // Prepare communication for TMC drivers
   #if HAS_DRIVER(TMC2130)
     tmc_init_cs_pins();
@@ -15080,6 +15492,11 @@ void setup() {
   // Load data from EEPROM if available (or use defaults)
   // This also updates variables in the planner, elsewhere
   (void)settings.load();
+
+  #if ENABLED(WANHAO_I3_PLUS)
+    // @advi3++: change baudrate if necessary
+    advi3pp::ADVi3pp::change_baudrate();
+  #endif
 
   #if HAS_M206_COMMAND
     // Initialize current position based on home_offset
@@ -15208,7 +15625,7 @@ void setup() {
 
   #if ENABLED(BLTOUCH)
     // Make sure any BLTouch error condition is cleared
-    bltouch_command(BLTOUCH_RESET);
+    bltouch_command(BLTOUCH_RESET, BLTOUCH_RESET_DELAY);
     set_bltouch_deployed(false);
   #endif
 
@@ -15243,6 +15660,11 @@ void setup() {
     check_print_job_recovery();
   #endif
 
+  #if ENABLED(WANHAO_I3_PLUS)
+    // @advi3++: ADVi3++ setup
+    advi3pp::ADVi3pp::setup();
+  #endif
+
   #if ENABLED(USE_WATCHDOG)
     watchdog_init();
   #endif
@@ -15254,13 +15676,15 @@ void setup() {
     enable_D();
   #endif
 
-  #if ENABLED(SDSUPPORT) && DISABLED(ULTRA_LCD)
+  #if ENABLED(SDSUPPORT) && !(ENABLED(ULTRA_LCD) && PIN_EXISTS(SD_DETECT))
     card.beginautostart();
   #endif
   
-  #if ENABLED(SDSUPPORT)
-	  if (!card.cardOK) card.initsd();
-  #endif
+  // SD Card Init Fix //Disabled 11/26/2019 TDH
+
+  //#if ENABLED(SDSUPPORT)
+	  //if (!card.cardOK) card.initsd();
+  //#endif
 }
 
 /**

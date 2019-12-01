@@ -33,6 +33,9 @@
 #include "printcounter.h"
 #include "delay.h"
 #include "endstops.h"
+#if ENABLED(WANHAO_I3_PLUS)
+  #include "advi3pp.h" // @advi3++
+#endif
 
 #if ENABLED(HEATER_0_USES_MAX6675)
   #include "MarlinSPI.h"
@@ -48,6 +51,9 @@
 
 #if ENABLED(EMERGENCY_PARSER)
   #include "emergency_parser.h"
+  #if ENABLED(WANHAO_I3_PLUS)
+    #include "advi3pp_.h"
+  #endif
 #endif
 
 #if HOTEND_USES_THERMISTOR
@@ -247,7 +253,7 @@ uint8_t Temperature::soft_pwm_amount[HOTENDS];
    * Alternately heat and cool the nozzle, observing its behavior to
    * determine the best PID values to achieve a stable temperature.
    */
-  void Temperature::PID_autotune(const float &target, const int8_t hotend, const int8_t ncycles, const bool set_result/*=false*/) {
+  void Temperature::pid_autotune(const float &target, const int8_t hotend, const int8_t ncycles, const bool set_result/*=false*/) {
     float current = 0.0;
     int cycles = 0;
     bool heating = true;
@@ -308,6 +314,11 @@ uint8_t Temperature::soft_pwm_amount[HOTENDS];
       return;
     }
 
+    if (target > GHV(BED_MAXTEMP, maxttemp[hotend]) - 15) {
+      SERIAL_ECHOLNPGM(MSG_PID_TEMP_TOO_HIGH);
+      return;
+    }
+
     SERIAL_ECHOLNPGM(MSG_PID_AUTOTUNE_START);
 
     disable_all_heaters(); // switch off all heaters.
@@ -315,6 +326,9 @@ uint8_t Temperature::soft_pwm_amount[HOTENDS];
     SHV(soft_pwm_amount, bias = d = (MAX_BED_POWER) >> 1, bias = d = (PID_MAX) >> 1);
 
     wait_for_heatup = true; // Can be interrupted with M108
+    #if ENABLED(WANHAO_I3_PLUS)    
+      advi3pp::ADVi3pp::set_status(F("PID tuning: waiting for heatup"));
+    #endif
 
     // PID Tuning loop
     while (wait_for_heatup) {
@@ -322,7 +336,7 @@ uint8_t Temperature::soft_pwm_amount[HOTENDS];
       const millis_t ms = millis();
 
       if (temp_meas_ready) { // temp sample ready
-        updateTemperaturesFromRawValues();
+        calculate_celsius_temperatures();
 
         // Get the current temperature and constrain it
         current = GHV(current_temperature_bed, current_temperature[hotend]);
@@ -331,7 +345,7 @@ uint8_t Temperature::soft_pwm_amount[HOTENDS];
 
         #if HAS_AUTO_FAN
           if (ELAPSED(ms, next_auto_fan_check_ms)) {
-            checkExtruderAutoFans();
+            check_extruder_auto_fans();
             next_auto_fan_check_ms = ms + 2500UL;
           }
         #endif
@@ -348,6 +362,9 @@ uint8_t Temperature::soft_pwm_amount[HOTENDS];
 
         if (!heating && current < target) {
           if (ELAPSED(ms, t1 + 5000UL)) {
+            #if ENABLED(WANHAO_I3_PLUS)
+              advi3pp::ADVi3pp::set_status_v(F("PID tuning: cycle %i / %i"), cycles + 1, ncycles);
+            #endif
             heating = true;
             t2 = ms;
             t_low = t2 - t1;
@@ -412,32 +429,66 @@ uint8_t Temperature::soft_pwm_amount[HOTENDS];
         #if HAS_TEMP_SENSOR
           print_heaterstates();
           SERIAL_EOL();
+          #if ENABLED(WANHAO_I3_PLUS)
+            advi3pp::ADVi3pp::idle(); // @advi3++: Update temperatures
+          #endif
         #endif
         next_temp_ms = ms + 2000UL;
 
-        // Make sure heating is actually working
-        #if WATCH_THE_BED || WATCH_HOTENDS
-          if (
-            #if WATCH_THE_BED && WATCH_HOTENDS
-              true
-            #elif WATCH_HOTENDS
-              hotend >= 0
-            #else
-              hotend < 0
-            #endif
-          ) {
-            if (!heated) {                                          // If not yet reached target...
-              if (current > next_watch_temp) {                      // Over the watch temp?
-                next_watch_temp = current + watch_temp_increase;    // - set the next temp to watch for
-                temp_change_ms = ms + watch_temp_period * 1000UL;   // - move the expiration timer up
-                if (current > watch_temp_target) heated = true;     // - Flag if target temperature reached
+        #if ENABLED(WANHAO_I3_PLUS)
+          // Make sure heating is actually working
+          #if WATCH_THE_BED || WATCH_HOTENDS
+          // @advi3++: Is thermal protection enabled?
+          if(advi3pp::ADVi3pp::is_thermal_protection_enabled())
+          {
+            if (
+              #if WATCH_THE_BED && WATCH_HOTENDS
+                true
+              #elif WATCH_HOTENDS
+                hotend >= 0
+              #else
+                hotend < 0
+              #endif
+            ) {
+              if (!heated) {                                          // If not yet reached target...
+                if (current > next_watch_temp) {                      // Over the watch temp?
+                  next_watch_temp = current + watch_temp_increase;    // - set the next temp to watch for
+                  temp_change_ms = ms + watch_temp_period * 1000UL;   // - move the expiration timer up
+                  if (current > watch_temp_target) heated = true;     // - Flag if target temperature reached
+                }
+                else if (ELAPSED(ms, temp_change_ms))                 // Watch timer expired
+                  _temp_error(hotend, PSTR(MSG_T_HEATING_FAILED), TEMP_ERR_PSTR(MSG_HEATING_FAILED_LCD, hotend));
               }
-              else if (ELAPSED(ms, temp_change_ms))                 // Watch timer expired
-                _temp_error(hotend, PSTR(MSG_T_HEATING_FAILED), TEMP_ERR_PSTR(MSG_HEATING_FAILED_LCD, hotend));
+              else if (current < target - (MAX_OVERSHOOT_PID_AUTOTUNE)) // Heated, then temperature fell too far?
+                _temp_error(hotend, PSTR(MSG_T_THERMAL_RUNAWAY), TEMP_ERR_PSTR(MSG_THERMAL_RUNAWAY, hotend));
             }
-            else if (current < target - (MAX_OVERSHOOT_PID_AUTOTUNE)) // Heated, then temperature fell too far?
-              _temp_error(hotend, PSTR(MSG_T_THERMAL_RUNAWAY), TEMP_ERR_PSTR(MSG_THERMAL_RUNAWAY, hotend));
           }
+          #endif
+        #else
+          // Make sure heating is actually working
+          #if WATCH_THE_BED || WATCH_HOTENDS
+            if (
+              #if WATCH_THE_BED && WATCH_HOTENDS
+                true
+              #elif WATCH_HOTENDS
+                hotend >= 0
+              #else
+                hotend < 0
+              #endif
+            ) {
+              if (!heated) {                                          // If not yet reached target...
+                if (current > next_watch_temp) {                      // Over the watch temp?
+                  next_watch_temp = current + watch_temp_increase;    // - set the next temp to watch for
+                  temp_change_ms = ms + watch_temp_period * 1000UL;   // - move the expiration timer up
+                  if (current > watch_temp_target) heated = true;     // - Flag if target temperature reached
+                }
+                else if (ELAPSED(ms, temp_change_ms))                 // Watch timer expired
+                  _temp_error(hotend, PSTR(MSG_T_HEATING_FAILED), TEMP_ERR_PSTR(MSG_HEATING_FAILED_LCD, hotend));
+              }
+              else if (current < target - (MAX_OVERSHOOT_PID_AUTOTUNE)) // Heated, then temperature fell too far?
+                _temp_error(hotend, PSTR(MSG_T_THERMAL_RUNAWAY), TEMP_ERR_PSTR(MSG_THERMAL_RUNAWAY, hotend));
+            }
+          #endif
         #endif
       } // every 2 seconds
 
@@ -478,7 +529,7 @@ uint8_t Temperature::soft_pwm_amount[HOTENDS];
           PID_PARAM(Kp, hotend) = workKp; \
           PID_PARAM(Ki, hotend) = scalePID_i(workKi); \
           PID_PARAM(Kd, hotend) = scalePID_d(workKd); \
-          updatePID(); }while(0)
+          update_pid(); }while(0)
 
         // Use the result? (As with "M303 U1")
         if (set_result) {
@@ -493,10 +544,16 @@ uint8_t Temperature::soft_pwm_amount[HOTENDS];
             _SET_BED_PID();
           #endif
         }
+        #if ENABLED(WANHAO_I3_PLUS)        
+          advi3pp::ADVi3pp::auto_pid_finished(true); // @advi3++: PID tuning finished
+        #endif
         return;
       }
       lcd_update();
     }
+    #if ENABLED(WANHAO_I3_PLUS)
+      advi3pp::ADVi3pp::auto_pid_finished(false); // @advi3++: PID tuning failed and cancelled
+    #endif
     disable_all_heaters();
   }
 
@@ -519,7 +576,7 @@ int Temperature::getHeaterPower(const int heater) {
 
 #if HAS_AUTO_FAN
 
-  void Temperature::checkExtruderAutoFans() {
+  void Temperature::check_extruder_auto_fans() {
     static const pin_t fanPin[] PROGMEM = { E0_AUTO_FAN_PIN, E1_AUTO_FAN_PIN, E2_AUTO_FAN_PIN, E3_AUTO_FAN_PIN, E4_AUTO_FAN_PIN, CHAMBER_AUTO_FAN_PIN };
     static const uint8_t fanBit[] PROGMEM = {
                     0,
@@ -569,6 +626,10 @@ int Temperature::getHeaterPower(const int heater) {
 // Temperature Error Handlers
 //
 void Temperature::_temp_error(const int8_t e, const char * const serial_msg, const char * const lcd_msg) {
+  #if ENABLED(WANHAO_I3_PLUS)
+    // @advi3++: Display the error on the LCD panel
+    advi3pp::ADVi3pp::temperature_error(reinterpret_cast<const __FlashStringHelper*>(lcd_msg));
+  #endif
   if (IsRunning()) {
     SERIAL_ERROR_START();
     serialprintPGM(serial_msg);
@@ -588,10 +649,20 @@ void Temperature::_temp_error(const int8_t e, const char * const serial_msg, con
 }
 
 void Temperature::max_temp_error(const int8_t e) {
+  #if ENABLED(WANHAO_I3_PLUS)
+    // @advi3++: Is thermal protection enabled?
+    if(!advi3pp::ADVi3pp::is_thermal_protection_enabled())
+      return;
+  #endif
   _temp_error(e, PSTR(MSG_T_MAXTEMP), TEMP_ERR_PSTR(MSG_ERR_MAXTEMP, e));
 }
 
 void Temperature::min_temp_error(const int8_t e) {
+  #if ENABLED(WANHAO_I3_PLUS)
+    // @advi3++: Is thermal protection enabled?
+    if(!advi3pp::ADVi3pp::is_thermal_protection_enabled())
+      return;
+  #endif
   _temp_error(e, PSTR(MSG_T_MINTEMP), TEMP_ERR_PSTR(MSG_ERR_MINTEMP, e));
 }
 
@@ -608,23 +679,18 @@ float Temperature::get_pid_output(const int8_t e) {
       pid_error[HOTEND_INDEX] = target_temperature[HOTEND_INDEX] - current_temperature[HOTEND_INDEX];
       dTerm[HOTEND_INDEX] = PID_K2 * PID_PARAM(Kd, HOTEND_INDEX) * (current_temperature[HOTEND_INDEX] - temp_dState[HOTEND_INDEX]) + float(PID_K1) * dTerm[HOTEND_INDEX];
       temp_dState[HOTEND_INDEX] = current_temperature[HOTEND_INDEX];
-      #if HEATER_IDLE_HANDLER
-        if (heater_idle_timeout_exceeded[HOTEND_INDEX]) {
-          pid_output = 0;
-          pid_reset[HOTEND_INDEX] = true;
-        }
-        else
-      #endif
-      if (pid_error[HOTEND_INDEX] > PID_FUNCTIONAL_RANGE) {
-        pid_output = BANG_MAX;
-        pid_reset[HOTEND_INDEX] = true;
-      }
-      else if (pid_error[HOTEND_INDEX] < -(PID_FUNCTIONAL_RANGE) || target_temperature[HOTEND_INDEX] == 0
+
+      if (target_temperature[HOTEND_INDEX] == 0
+        || pid_error[HOTEND_INDEX] < -(PID_FUNCTIONAL_RANGE)
         #if HEATER_IDLE_HANDLER
           || heater_idle_timeout_exceeded[HOTEND_INDEX]
         #endif
-        ) {
+      ) {
         pid_output = 0;
+        pid_reset[HOTEND_INDEX] = true;
+      }
+      else if (pid_error[HOTEND_INDEX] > PID_FUNCTIONAL_RANGE) {
+        pid_output = BANG_MAX;
         pid_reset[HOTEND_INDEX] = true;
       }
       else {
@@ -759,7 +825,7 @@ void Temperature::manage_heater() {
 
   if (!temp_meas_ready) return;
 
-  updateTemperaturesFromRawValues(); // also resets the watchdog
+  calculate_celsius_temperatures(); // also resets the watchdog
 
   #if ENABLED(HEATER_0_USES_MAX6675)
     if (current_temperature[0] > MIN(HEATER_0_MAXTEMP, MAX6675_TMAX - 1.0)) max_temp_error(0);
@@ -778,20 +844,43 @@ void Temperature::manage_heater() {
     #endif
 
     #if ENABLED(THERMAL_PROTECTION_HOTENDS)
-      // Check for thermal runaway
-      thermal_runaway_protection(&thermal_runaway_state_machine[e], &thermal_runaway_timer[e], current_temperature[e], target_temperature[e], e, THERMAL_PROTECTION_PERIOD, THERMAL_PROTECTION_HYSTERESIS);
+      #if ENABLED(WANHAO_I3_PLUS)
+        // @advi3++: Is thermal protection enabled?
+        if(advi3pp::ADVi3pp::is_thermal_protection_enabled())
+        {
+          // Check for thermal runaway
+          thermal_runaway_protection(&thermal_runaway_state_machine[e], &thermal_runaway_timer[e], current_temperature[e], target_temperature[e], e, THERMAL_PROTECTION_PERIOD, THERMAL_PROTECTION_HYSTERESIS);
+        }
+      #else
+        // Check for thermal runaway
+        thermal_runaway_protection(&thermal_runaway_state_machine[e], &thermal_runaway_timer[e], current_temperature[e], target_temperature[e], e, THERMAL_PROTECTION_PERIOD, THERMAL_PROTECTION_HYSTERESIS);
+      #endif
     #endif
 
     soft_pwm_amount[e] = (current_temperature[e] > minttemp[e] || is_preheating(e)) && current_temperature[e] < maxttemp[e] ? (int)get_pid_output(e) >> 1 : 0;
 
     #if WATCH_HOTENDS
-      // Make sure temperature is increasing
-      if (watch_heater_next_ms[e] && ELAPSED(ms, watch_heater_next_ms[e])) { // Time to check this extruder?
-        if (degHotend(e) < watch_target_temp[e])                             // Failed to increase enough?
-          _temp_error(e, PSTR(MSG_T_HEATING_FAILED), TEMP_ERR_PSTR(MSG_HEATING_FAILED_LCD, e));
-        else                                                                 // Start again if the target is still far off
-          start_watching_heater(e);
-      }
+      #if ENABLED(WANHAO_I3_PLUS)
+        // @advi3++: Is thermal protection enabled?
+        if(advi3pp::ADVi3pp::is_thermal_protection_enabled())
+        {
+          // Make sure temperature is increasing
+          if (watch_heater_next_ms[e] && ELAPSED(ms, watch_heater_next_ms[e])) { // Time to check this extruder?
+            if (degHotend(e) < watch_target_temp[e])                             // Failed to increase enough?
+              _temp_error(e, PSTR(MSG_T_HEATING_FAILED), TEMP_ERR_PSTR(MSG_HEATING_FAILED_LCD, e));
+            else                                                                 // Start again if the target is still far off
+              start_watching_heater(e);
+          }
+        }
+      #else
+        // Make sure temperature is increasing
+        if (watch_heater_next_ms[e] && ELAPSED(ms, watch_heater_next_ms[e])) { // Time to check this extruder?
+          if (degHotend(e) < watch_target_temp[e])                             // Failed to increase enough?
+            _temp_error(e, PSTR(MSG_T_HEATING_FAILED), TEMP_ERR_PSTR(MSG_HEATING_FAILED_LCD, e));
+          else                                                                 // Start again if the target is still far off
+            start_watching_heater(e);
+        }
+      #endif
     #endif
 
     #if ENABLED(TEMP_SENSOR_1_AS_REDUNDANT)
@@ -804,7 +893,7 @@ void Temperature::manage_heater() {
 
   #if HAS_AUTO_FAN
     if (ELAPSED(ms, next_auto_fan_check_ms)) { // only need to check fan state very infrequently
-      checkExtruderAutoFans();
+      check_extruder_auto_fans();
       next_auto_fan_check_ms = ms + 2500UL;
     }
   #endif
@@ -825,13 +914,27 @@ void Temperature::manage_heater() {
   #if HAS_HEATED_BED
 
     #if WATCH_THE_BED
-      // Make sure temperature is increasing
-      if (watch_bed_next_ms && ELAPSED(ms, watch_bed_next_ms)) {        // Time to check the bed?
-        if (degBed() < watch_target_bed_temp)                           // Failed to increase enough?
-          _temp_error(-1, PSTR(MSG_T_HEATING_FAILED), TEMP_ERR_PSTR(MSG_HEATING_FAILED_LCD, -1));
-        else                                                            // Start again if the target is still far off
-          start_watching_bed();
-      }
+       #if ENABLED(WANHAO_I3_PLUS)
+        // @advi3++: Is thermal protection enabled?
+        if(advi3pp::ADVi3pp::is_thermal_protection_enabled())
+        {
+          // Make sure temperature is increasing
+          if (watch_bed_next_ms && ELAPSED(ms, watch_bed_next_ms)) {        // Time to check the bed?
+            if (degBed() < watch_target_bed_temp)                           // Failed to increase enough?
+              _temp_error(-1, PSTR(MSG_T_HEATING_FAILED), TEMP_ERR_PSTR(MSG_HEATING_FAILED_LCD, -1));
+            else                                                            // Start again if the target is still far off
+              start_watching_bed();
+          }
+        }
+      #else
+        // Make sure temperature is increasing
+        if (watch_bed_next_ms && ELAPSED(ms, watch_bed_next_ms)) {        // Time to check the bed?
+          if (degBed() < watch_target_bed_temp)                           // Failed to increase enough?
+            _temp_error(-1, PSTR(MSG_T_HEATING_FAILED), TEMP_ERR_PSTR(MSG_HEATING_FAILED_LCD, -1));
+          else                                                            // Start again if the target is still far off
+            start_watching_bed();
+        }
+      #endif
     #endif // WATCH_THE_BED
 
     #if DISABLED(PIDTEMPBED)
@@ -852,7 +955,15 @@ void Temperature::manage_heater() {
     #endif
 
     #if HAS_THERMALLY_PROTECTED_BED
-      thermal_runaway_protection(&thermal_runaway_bed_state_machine, &thermal_runaway_bed_timer, current_temperature_bed, target_temperature_bed, -1, THERMAL_PROTECTION_BED_PERIOD, THERMAL_PROTECTION_BED_HYSTERESIS);
+      #if ENABLED(WANHAO_I3_PLUS)
+        // @advi3++: Is thermal protection enabled?
+        if(advi3pp::ADVi3pp::is_thermal_protection_enabled())
+        {
+          thermal_runaway_protection(&thermal_runaway_bed_state_machine, &thermal_runaway_bed_timer, current_temperature_bed, target_temperature_bed, -1, THERMAL_PROTECTION_BED_PERIOD, THERMAL_PROTECTION_BED_HYSTERESIS);
+        }
+      #else
+        thermal_runaway_protection(&thermal_runaway_bed_state_machine, &thermal_runaway_bed_timer, current_temperature_bed, target_temperature_bed, -1, THERMAL_PROTECTION_BED_PERIOD, THERMAL_PROTECTION_BED_HYSTERESIS);
+      #endif
     #endif
 
     #if HEATER_IDLE_HANDLER
@@ -914,7 +1025,7 @@ void Temperature::manage_heater() {
 
 // Derived from RepRap FiveD extruder::getTemperature()
 // For hot end temperature measurement.
-float Temperature::analog2temp(const int raw, const uint8_t e) {
+float Temperature::analog_to_celsius_hotend(const int raw, const uint8_t e) {
   #if ENABLED(TEMP_SENSOR_1_AS_REDUNDANT)
     if (e > HOTENDS)
   #else
@@ -986,7 +1097,7 @@ float Temperature::analog2temp(const int raw, const uint8_t e) {
 #if HAS_HEATED_BED
   // Derived from RepRap FiveD extruder::getTemperature()
   // For bed temperature measurement.
-  float Temperature::analog2tempBed(const int raw) {
+  float Temperature::analog_to_celsius_bed(const int raw) {
     #if ENABLED(HEATER_BED_USES_THERMISTOR)
       SCAN_THERMISTOR_TABLE(BEDTEMPTABLE, BEDTEMPTABLE_LEN);
     #elif ENABLED(HEATER_BED_USES_AD595)
@@ -1002,7 +1113,7 @@ float Temperature::analog2temp(const int raw, const uint8_t e) {
 #if HAS_TEMP_CHAMBER
   // Derived from RepRap FiveD extruder::getTemperature()
   // For chamber temperature measurement.
-  float Temperature::analog2tempChamber(const int raw) {
+  float Temperature::analog_to_celsius_chamber(const int raw) {
     #if ENABLED(HEATER_CHAMBER_USES_THERMISTOR)
       SCAN_THERMISTOR_TABLE(CHAMBERTEMPTABLE, CHAMBERTEMPTABLE_LEN);
     #elif ENABLED(HEATER_CHAMBER_USES_AD595)
@@ -1021,22 +1132,22 @@ float Temperature::analog2temp(const int raw, const uint8_t e) {
  * and this function is called from normal context
  * as it would block the stepper routine.
  */
-void Temperature::updateTemperaturesFromRawValues() {
+void Temperature::calculate_celsius_temperatures() {
   #if ENABLED(HEATER_0_USES_MAX6675)
     current_temperature_raw[0] = read_max6675();
   #endif
-  HOTEND_LOOP() current_temperature[e] = Temperature::analog2temp(current_temperature_raw[e], e);
+  HOTEND_LOOP() current_temperature[e] = analog_to_celsius_hotend(current_temperature_raw[e], e);
   #if HAS_HEATED_BED
-    current_temperature_bed = Temperature::analog2tempBed(current_temperature_bed_raw);
+    current_temperature_bed = analog_to_celsius_bed(current_temperature_bed_raw);
   #endif
   #if HAS_TEMP_CHAMBER
-    current_temperature_chamber = Temperature::analog2tempChamber(current_temperature_chamber_raw);
+    current_temperature_chamber = analog_to_celsius_chamber(current_temperature_chamber_raw);
   #endif
   #if ENABLED(TEMP_SENSOR_1_AS_REDUNDANT)
-    redundant_temperature = Temperature::analog2temp(redundant_temperature_raw, 1);
+    redundant_temperature = analog_to_celsius_hotend(redundant_temperature_raw, 1);
   #endif
   #if ENABLED(FILAMENT_WIDTH_SENSOR)
-    filament_width_meas = analog2widthFil();
+    filament_width_meas = analog_to_mm_fil_width();
   #endif
 
   #if ENABLED(USE_WATCHDOG)
@@ -1051,7 +1162,7 @@ void Temperature::updateTemperaturesFromRawValues() {
 #if ENABLED(FILAMENT_WIDTH_SENSOR)
 
   // Convert raw Filament Width to millimeters
-  float Temperature::analog2widthFil() {
+  float Temperature::analog_to_mm_fil_width() {
     return current_raw_filwidth * 5.0f * (1.0f / 16383.0);
   }
 
@@ -1251,7 +1362,7 @@ void Temperature::init() {
 
   #define TEMP_MIN_ROUTINE(NR) \
     minttemp[NR] = HEATER_ ##NR## _MINTEMP; \
-    while (analog2temp(minttemp_raw[NR], NR) < HEATER_ ##NR## _MINTEMP) { \
+    while (analog_to_celsius_hotend(minttemp_raw[NR], NR) < HEATER_ ##NR## _MINTEMP) { \
       if (HEATER_ ##NR## _RAW_LO_TEMP < HEATER_ ##NR## _RAW_HI_TEMP) \
         minttemp_raw[NR] += OVERSAMPLENR; \
       else \
@@ -1259,7 +1370,7 @@ void Temperature::init() {
     }
   #define TEMP_MAX_ROUTINE(NR) \
     maxttemp[NR] = HEATER_ ##NR## _MAXTEMP; \
-    while (analog2temp(maxttemp_raw[NR], NR) > HEATER_ ##NR## _MAXTEMP) { \
+    while (analog_to_celsius_hotend(maxttemp_raw[NR], NR) > HEATER_ ##NR## _MAXTEMP) { \
       if (HEATER_ ##NR## _RAW_LO_TEMP < HEATER_ ##NR## _RAW_HI_TEMP) \
         maxttemp_raw[NR] -= OVERSAMPLENR; \
       else \
@@ -1307,7 +1418,7 @@ void Temperature::init() {
 
   #if HAS_HEATED_BED
     #ifdef BED_MINTEMP
-      while (analog2tempBed(bed_minttemp_raw) < BED_MINTEMP) {
+      while (analog_to_celsius_bed(bed_minttemp_raw) < BED_MINTEMP) {
         #if HEATER_BED_RAW_LO_TEMP < HEATER_BED_RAW_HI_TEMP
           bed_minttemp_raw += OVERSAMPLENR;
         #else
@@ -1316,7 +1427,7 @@ void Temperature::init() {
       }
     #endif // BED_MINTEMP
     #ifdef BED_MAXTEMP
-      while (analog2tempBed(bed_maxttemp_raw) > BED_MAXTEMP) {
+      while (analog_to_celsius_bed(bed_maxttemp_raw) > BED_MAXTEMP) {
         #if HEATER_BED_RAW_LO_TEMP < HEATER_BED_RAW_HI_TEMP
           bed_maxttemp_raw -= OVERSAMPLENR;
         #else
@@ -1420,6 +1531,12 @@ void Temperature::init() {
   void Temperature::thermal_runaway_protection(Temperature::TRState * const state, millis_t * const timer, const float &current, const float &target, const int8_t heater_id, const uint16_t period_seconds, const uint16_t hysteresis_degc) {
 
     static float tr_target_temperature[HOTENDS + 1] = { 0.0 };
+
+    #if ENABLED(WANHAO_I3_PLUS)
+      // @advi3++: Is thermal protection enabled? If not, do not go further
+      if(!advi3pp::ADVi3pp::is_thermal_protection_enabled())
+        return;
+    #endif
 
     /**
         SERIAL_ECHO_START();
@@ -1795,16 +1912,35 @@ void Temperature::readings_ready() {
         || (soft_pwm_amount[e] > 0)
       #endif
     ;
-    if (rawtemp > maxttemp_raw[e] * tdir) max_temp_error(e);
-    if (rawtemp < minttemp_raw[e] * tdir && !is_preheating(e) && heater_on) {
+    
+    #if ENABLED(WANHAO_I3_PLUS)
+      // @advi3++: Is thermal protection enabled?
+      if(advi3pp::ADVi3pp::is_thermal_protection_enabled())
+      {
+        if (rawtemp > maxttemp_raw[e] * tdir) max_temp_error(e);
+        if (rawtemp < minttemp_raw[e] * tdir && !is_preheating(e) && heater_on) {
+          #ifdef MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED
+            if (++consecutive_low_temperature_error[e] >= MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED)
+          #endif
+              min_temp_error(e);
+        }
+        #ifdef MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED
+          else
+            consecutive_low_temperature_error[e] = 0;
+        #endif
+      }
+    #else
+      if (rawtemp > maxttemp_raw[e] * tdir) max_temp_error(e);
+      if (rawtemp < minttemp_raw[e] * tdir && !is_preheating(e) && heater_on) {
+        #ifdef MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED
+          if (++consecutive_low_temperature_error[e] >= MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED)
+        #endif
+            min_temp_error(e);
+      }
       #ifdef MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED
-        if (++consecutive_low_temperature_error[e] >= MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED)
+        else
+          consecutive_low_temperature_error[e] = 0;
       #endif
-          min_temp_error(e);
-    }
-    #ifdef MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED
-      else
-        consecutive_low_temperature_error[e] = 0;
     #endif
   }
 
@@ -1819,8 +1955,17 @@ void Temperature::readings_ready() {
         || (soft_pwm_amount_bed > 0)
       #endif
     ;
-    if (current_temperature_bed_raw GEBED bed_maxttemp_raw) max_temp_error(-1);
-    if (bed_minttemp_raw GEBED current_temperature_bed_raw && bed_on) min_temp_error(-1);
+    #if ENABLED(WANHAO_I3_PLUS)
+      // @advi3++: Is thermal protection enabled?
+      if(advi3pp::ADVi3pp::is_thermal_protection_enabled())
+      {
+        if (current_temperature_bed_raw GEBED bed_maxttemp_raw) max_temp_error(-1);
+        if (bed_minttemp_raw GEBED current_temperature_bed_raw && bed_on) min_temp_error(-1);
+      }
+    #else
+      if (current_temperature_bed_raw GEBED bed_maxttemp_raw) max_temp_error(-1);
+      if (bed_minttemp_raw GEBED current_temperature_bed_raw && bed_on) min_temp_error(-1);
+    #endif
   #endif
 }
 
