@@ -63,6 +63,7 @@
 #define BOARD_MKS_BASE_HEROIC   41    // MKS BASE 1.0 with Heroic HR4982 stepper drivers
 #define BOARD_MKS_GEN_13        47    // MKS GEN v1.3 or 1.4
 #define BOARD_MKS_GEN_L         53    // MKS GEN L
+#define BOARD_MKS_GEN_L_V2      54    // MKS GEN L V2
 #define BOARD_ZRIB_V20          504   // zrib V2.0 control board (Chinese knock off RAMPS replica)
 #define BOARD_FELIX2            37    // Felix 2.0+ Electronics Board (RAMPS like)
 #define BOARD_RIGIDBOARD        42    // Invent-A-Part RigidBoard
@@ -79,6 +80,7 @@
 #define BOARD_TRIGORILLA_13     343   // TriGorilla Anycubic version 1.3 based on RAMPS EFB
 #define BOARD_TRIGORILLA_14     443   // TriGorilla Anycubic version 1.4 based on RAMPS EFB
 #define BOARD_RAMPS_ENDER_4     243   // Creality: Ender-4, CR-8
+#define BOARD_HJC2560C_REV2      99   // HengJianChuang HCMaker7
 
 //
 // Other ATmega1280, ATmega2560
@@ -105,9 +107,14 @@
 #define BOARD_GT2560_REV_A      74    // Geeetech GT2560 Rev. A
 #define BOARD_GT2560_REV_A_PLUS 75    // Geeetech GT2560 Rev. A+ (with auto level probe)
 #define BOARD_CR10S             476   // Creality CR-10S Board
-#define	BOARD_ONEPLUS1_wanhao	  511   // Wanhao i3 Mini Board
-#define BOARD_RAMPSPLUS2		    512	  // Alfawise U10 RampsPlus2 Board
+#define	BOARD_ONEPLUS1_wanhao	511   // Wanhao i3 Mini Board
+#define BOARD_RAMPSPLUS2		512	  // Alfawise U10 RampsPlus2 Board
 #define BOARD_GT2560_REV_B      600   // Geeetech GT2560 Rev. B
+#define BOARD_COPYMASTER300     998 // Copymaster 3D 300 Board
+#define BOARD_GT2560_V3_0       76    // Geeetech A10, A20, etc.
+#define BOARD_I3_PLUS           888   // Wanhao Duplicator i3 Plus @advi3++
+#define BOARD_I3_PLUS_MARK2     889   // Wanhao Duplicator i3 Plus Mark II @advi3++
+#define BOARD_I3_PLUS_HE180021  890   // Aldi UK Balco 2018 (HE180021)
 
 //
 // ATmega1281, ATmega2561

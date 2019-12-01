@@ -56,9 +56,13 @@
 // Servos
 //
 #ifdef IS_RAMPS_13
-  #define SERVO0_PIN        7   // RAMPS_13 // Will conflict with BTN_EN2 on LCD_I2C_VIKI
+  #define SERVO0_PIN        7   // RAMPS_13
 #else
-  #define SERVO0_PIN       11
+   #if ENABLED(IS_MKS_BOARD_ATX)
+    #define SERVO0_PIN       12
+  #else
+    #define SERVO0_PIN       11
+  #endif
 #endif
 #define SERVO1_PIN          6
 #define SERVO2_PIN          5
@@ -69,16 +73,30 @@
 //
 // Limit Switches
 //
-#define X_MIN_PIN           3
+#if ENABLED(MKS_PRINTER)
+  #define X_STOP_PIN         3
+#else
+  #define X_MIN_PIN          3
+#endif
 #ifndef X_MAX_PIN
   #if ENABLED(EZOUTV2_ENABLE)
+    #define X_MAX_PIN         -1
+  #elif ENABLED(ENDER4_FIL)
     #define X_MAX_PIN         -1
   #else
     #define X_MAX_PIN         2
   #endif
 #endif
-#define Y_MIN_PIN          14
-#define Y_MAX_PIN          15
+#if ENABLED(MKS_PRINTER)
+  #define Y_STOP_PIN         14
+#else
+  #define Y_MIN_PIN          14
+#endif
+#if ENABLED(EZOUTV2_DUAL_ENABLE)
+  #define Y_MAX_PIN          -1 //15
+#else
+  #define Y_MAX_PIN        15
+#endif
 #define Z_MIN_PIN          18
 #define Z_MAX_PIN          19
 
@@ -165,31 +183,75 @@
    * Software serial
    */
 
-  #define X_SERIAL_TX_PIN    40
-  #define X_SERIAL_RX_PIN    63
-  #define X2_SERIAL_TX_PIN   -1
-  #define X2_SERIAL_RX_PIN   -1
+  #ifndef X_SERIAL_TX_PIN
+    #define X_SERIAL_TX_PIN  40
+  #endif
+  #ifndef X_SERIAL_RX_PIN
+    #define X_SERIAL_RX_PIN  63
+  #endif
+  #ifndef X2_SERIAL_TX_PIN
+    #define X2_SERIAL_TX_PIN -1
+  #endif
+  #ifndef X2_SERIAL_RX_PIN
+    #define X2_SERIAL_RX_PIN -1
+  #endif
 
-  #define Y_SERIAL_TX_PIN    59
-  #define Y_SERIAL_RX_PIN    64
-  #define Y2_SERIAL_TX_PIN   -1
-  #define Y2_SERIAL_RX_PIN   -1
+  #ifndef Y_SERIAL_TX_PIN
+    #define Y_SERIAL_TX_PIN  59
+  #endif
+  #ifndef Y_SERIAL_RX_PIN
+    #define Y_SERIAL_RX_PIN  64
+  #endif
+  #ifndef Y2_SERIAL_TX_PIN
+    #define Y2_SERIAL_TX_PIN -1
+  #endif
+  #ifndef Y2_SERIAL_RX_PIN
+    #define Y2_SERIAL_RX_PIN -1
+  #endif
 
-  #define Z_SERIAL_TX_PIN    42
-  #define Z_SERIAL_RX_PIN    65
-  #define Z2_SERIAL_TX_PIN   -1
-  #define Z2_SERIAL_RX_PIN   -1
+  #ifndef Z_SERIAL_TX_PIN
+    #define Z_SERIAL_TX_PIN  42
+  #endif
+  #ifndef Z_SERIAL_RX_PIN
+    #define Z_SERIAL_RX_PIN  65
+  #endif
+  #ifndef Z2_SERIAL_TX_PIN
+    #define Z2_SERIAL_TX_PIN -1
+  #endif
+  #ifndef Z2_SERIAL_RX_PIN
+    #define Z2_SERIAL_RX_PIN -1
+  #endif
 
-  #define E0_SERIAL_TX_PIN   44
-  #define E0_SERIAL_RX_PIN   66
-  #define E1_SERIAL_TX_PIN   -1
-  #define E1_SERIAL_RX_PIN   -1
-  #define E2_SERIAL_TX_PIN   -1
-  #define E2_SERIAL_RX_PIN   -1
-  #define E3_SERIAL_TX_PIN   -1
-  #define E3_SERIAL_RX_PIN   -1
-  #define E4_SERIAL_TX_PIN   -1
-  #define E4_SERIAL_RX_PIN   -1
+  #ifndef E0_SERIAL_TX_PIN
+    #define E0_SERIAL_TX_PIN 44
+  #endif
+  #ifndef E0_SERIAL_RX_PIN
+    #define E0_SERIAL_RX_PIN 66
+  #endif
+  #ifndef E1_SERIAL_TX_PIN
+    #define E1_SERIAL_TX_PIN -1
+  #endif
+  #ifndef E1_SERIAL_RX_PIN
+    #define E1_SERIAL_RX_PIN -1
+  #endif
+  #ifndef E2_SERIAL_TX_PIN
+    #define E2_SERIAL_TX_PIN -1
+  #endif
+  #ifndef E2_SERIAL_RX_PIN
+    #define E2_SERIAL_RX_PIN -1
+  #endif
+  #ifndef E3_SERIAL_TX_PIN
+    #define E3_SERIAL_TX_PIN -1
+  #endif
+  #ifndef E3_SERIAL_RX_PIN
+    #define E3_SERIAL_RX_PIN -1
+  #endif
+  #ifndef E4_SERIAL_TX_PIN
+    #define E4_SERIAL_TX_PIN -1
+  #endif
+  #ifndef E4_SERIAL_RX_PIN
+    #define E4_SERIAL_RX_PIN -1
+  #endif
 #endif
 
 //
@@ -282,14 +344,27 @@
 #endif
 
 // define digital pin 4 for the filament runout sensor. Use the RAMPS 1.4 digital input 4 on the servos connector
-#if ENABLED(EZOUTV2_ENABLE)
-  #define FIL_RUNOUT_PIN      2
+#if ENABLED(EZOUTV2_ENABLE) || ENABLED(ENDER4_FIL)
+  #if ENABLED(TIM_SMARTT)
+    #define FIL_RUNOUT_PIN      57
+  #else
+    #define FIL_RUNOUT_PIN      2
+  #endif
 #else
   #define FIL_RUNOUT_PIN      4
 #endif
 
+#if ENABLED(TIM_AM8) || ENABLED(EZOUTV2_DUAL_ENABLE)
+  #define Y_MAX_PIN -1
+  #define FIL_RUNOUT2_PIN 15
+#endif
+
 #ifndef PS_ON_PIN
-  #define PS_ON_PIN        12
+  #if ENABLED(IS_MKS_BOARD_ATX)
+    #define PS_ON_PIN        11
+  #else
+    #define PS_ON_PIN        12
+  #endif
 #endif
 
 #if ENABLED(CASE_LIGHT_ENABLE) && !defined(CASE_LIGHT_PIN) && !defined(SPINDLE_LASER_ENABLE_PIN)
@@ -454,8 +529,8 @@
 
     #elif ENABLED(LCD_I2C_VIKI)
 
-      #define BTN_EN1           22   // http://files.panucatt.com/datasheets/viki_wiring_diagram.pdf explains 40/42.
-      #define BTN_EN2            7   // 22/7 are unused on RAMPS_14. 22 is unused and 7 the SERVO0_PIN on RAMPS_13.
+      #define BTN_EN1           40   // http://files.panucatt.com/datasheets/viki_wiring_diagram.pdf explains 40/42.
+      #define BTN_EN2           42   // for sake of the wiring diagram for RAMPS 1.4 we keep 40/42, confirmed working.
       #define BTN_ENC           -1
 
       #define LCD_SDSS          SDSS
@@ -515,7 +590,7 @@
       #define BTN_ENC           35
 
       #define SD_DETECT_PIN     49
-      #define KILL_PIN          64
+      #define KILL_PIN          41
 
     #elif ENABLED(MINIPANEL)
 
