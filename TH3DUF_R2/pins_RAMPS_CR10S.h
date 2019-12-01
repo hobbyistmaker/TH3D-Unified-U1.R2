@@ -50,17 +50,32 @@
   #define FIL_RUNOUT_PIN      2
 #endif
 
+#if ENABLED(EZOUTV2_DUAL_ENABLE)
+  #define FIL_RUNOUT2_PIN 15
+#endif
+
 //
 // Limit Switches
 //
-#define X_MIN_PIN           3
-#ifndef X_MAX_PIN
-  #define X_MAX_PIN         -1
+#if ENABLED(ENDER5_DUALBOARD) || ENABLED(ENDER5_PLUS)
+  #define X_MIN_PIN          -1
+  #define X_MAX_PIN           3
+  #define Y_MIN_PIN          -1
+  #define Y_MAX_PIN          14
+#else
+  #define X_MIN_PIN           3
+  #define X_MAX_PIN          -1
+  #define Y_MIN_PIN          14
+  #define Y_MAX_PIN          -1
 #endif
-#define Y_MIN_PIN          14
-#define Y_MAX_PIN          15
-#define Z_MIN_PIN          18
-#define Z_MAX_PIN          19
+
+#if ENABLED(CR10_MAX) && ENABLED(BLTOUCH)
+  #define Z_MIN_PIN          19
+  #define Z_MAX_PIN          18
+#else
+  #define Z_MIN_PIN          18
+  #define Z_MAX_PIN          19
+#endif
 
 //
 // Z Probe (when not Z_MIN_PIN)
@@ -278,28 +293,40 @@
       #define KILL_PIN          64
 
     #elif ENABLED(MINIPANEL)
+    
+      #if ENABLED(CR20)
+      
+        #define BEEPER_PIN 37
+        #define LCD_BACKLIGHT_PIN -1
+        
+        #define DOGLCD_A0  27
+        #define DOGLCD_CS  25
+                
+        #define BTN_EN1 31
+        #define BTN_EN2 33
+        #define BTN_ENC 35  
+        
+        #define SDSS   53
+        #define SD_DETECT_PIN -1
+        #define KILL_PIN 64
+        
+      #else
+        
+        #define BEEPER_PIN        42
+        #define LCD_BACKLIGHT_PIN 65 
+  
+        #define DOGLCD_A0         44
+        #define DOGLCD_CS         66
 
-      #define BEEPER_PIN        42
-      // not connected to a pin
-      #define LCD_BACKLIGHT_PIN 65 // backlight LED on A11/D65
+        #define BTN_EN1           40
+        #define BTN_EN2           63
+        #define BTN_ENC           59
 
-      #define DOGLCD_A0         44
-      #define DOGLCD_CS         66
-
-      // GLCD features
-      //#define LCD_CONTRAST   190
-      // Uncomment screen orientation
-      //#define LCD_SCREEN_ROT_90
-      //#define LCD_SCREEN_ROT_180
-      //#define LCD_SCREEN_ROT_270
-
-      #define BTN_EN1           40
-      #define BTN_EN2           63
-      #define BTN_ENC           59
-
-      #define SDSS              53
-      #define SD_DETECT_PIN     49
-      #define KILL_PIN          64
+        #define SDSS              53
+        #define SD_DETECT_PIN     49
+        #define KILL_PIN          64
+        
+      #endif
 
     #else
 
